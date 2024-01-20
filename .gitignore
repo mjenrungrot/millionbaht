@@ -1,0 +1,6 @@
+dl/*
+ignore/
+__pycache__
+nohup.out
+.env
+venv

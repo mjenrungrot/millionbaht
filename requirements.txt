@@ -1,0 +1,10 @@
+torch
+torchvision
+torchaudio
+gTTS
+discord.py
+pynacl
+yt_dlp
+python-dotenv
+torch-pitch-shift
+inspect
