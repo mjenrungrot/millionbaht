@@ -286,7 +286,7 @@ async def restart(ctx: commands.Context, *args):
 
 
 @bot.command(name='update')
-async def restart(ctx: commands.Context, *args):
+async def update(ctx: commands.Context, *args):
     voice_state = ctx.author.voice
     if not await sense_checks(ctx, voice_state=voice_state):
         return
