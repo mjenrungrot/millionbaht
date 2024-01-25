@@ -19,6 +19,22 @@ from torch_pitch_shift import pitch_shift
 import inflect
 import time
 from gtts import gTTS
+import sqlite3
+from typing import TypedDict
+
+db_con = sqlite3.connect("db.db")
+db_cur = db_con.cursor()
+
+class DB_TABLE_SCHEMA(TypedDict, total=False):
+    history: str
+
+DB_TABLE = DB_TABLE_SCHEMA(
+    history = "CREATE TABLE history (id, timestamp TIMESTAMP, query string, yt_id string)"
+)
+
+
+
+
 
 number_engine = inflect.engine()
 random.seed(time.perf_counter_ns())
@@ -128,6 +144,16 @@ def main():
     try: bot.run(TOKEN)
     except discord.PrivilegedIntentsRequired as error:
         return error
+
+
+def _create_table_if_not_existed(table_name: str):
+    db_cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+    result = db_cur.fetchone()
+    if reuslt is None:
+        db_cur.execute(f"CREATE TABLE")
+
+
+
 
 @bot.command(name='queue', aliases=['q'])
 async def queue(ctx: commands.Context, *args):
@@ -344,29 +370,29 @@ async def play(ctx: commands.Context, *args):
             return
 
         if 'entries' in info:
-            info = info['entries'][0]
-        # send link if it was a search, otherwise send title as sending link again would clutter chat with previews
-        await ctx.send('downloading ' + (f'https://youtu.be/{info["id"]}' if will_need_search else f'`{info["title"]}`'))
-        try:
-            ydl.download([query])
-        except yt_dlp.utils.DownloadError as err:
-            await notify_about_failure(ctx, err)
-            return
-        
-        try:
-            path = f'./dl/{server_id}/{info["id"]}.{info["ext"]}'
-            path, info = transform_fn(path, info, semitone=semitone, speed=speed)
-        except Exception as e:
-            await ctx.send(f'failed to transform audio with {str(e)}')
-            pass
+            # info = info['entries'][0]
+            for info in info['entries']:
+                await ctx.send('downloading ' + (f'https://youtu.be/{info["id"]}' if will_need_search else f'`{info["title"]}`'))
+                try:
+                    ydl.download([query])
+                except yt_dlp.utils.DownloadError as err:
+                    await notify_about_failure(ctx, err)
+                    return
+                
+                try:
+                    path = f'./dl/{server_id}/{info["id"]}.{info["ext"]}'
+                    path, info = transform_fn(path, info, semitone=semitone, speed=speed)
+                except Exception as e:
+                    await ctx.send(f'failed to transform audio with {str(e)}')
+                    pass
 
-        try: queues[server_id].append((path, info))
-        except KeyError: # first in queue
-            queues[server_id] = [(path, info)]
-            try: connection = await voice_state.channel.connect()
-            except discord.ClientException: connection = get_voice_client_from_channel_id(voice_state.channel.id)
-            connection.play(discord.FFmpegOpusAudio(path), after=lambda error=None, connection=connection, server_id=server_id:
-                                                             after_track(error, connection, server_id))
+                try: queues[server_id].append((path, info))
+                except KeyError: # first in queue
+                    queues[server_id] = [(path, info)]
+                    try: connection = await voice_state.channel.connect()
+                    except discord.ClientException: connection = get_voice_client_from_channel_id(voice_state.channel.id)
+                    connection.play(discord.FFmpegOpusAudio(path), after=lambda error=None, connection=connection, server_id=server_id:
+                                                                    after_track(error, connection, server_id))
 
 def get_voice_client_from_channel_id(channel_id: int):
     for voice_client in bot.voice_clients:
