@@ -8,3 +8,5 @@ yt_dlp
 python-dotenv
 torch-pitch-shift
 inflect
+typeguard
+pydantic
