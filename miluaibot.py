@@ -132,6 +132,10 @@ async def leave(ctx: commands.Context):
         await ctx.send("You have to be in the same voice channel as the bot")
         return
     get_queue(ctx).leave()
+    assert ctx.guild is not None
+    guild_id = ctx.guild.id
+    del QUEUES[guild_id]
+
 
 
 
