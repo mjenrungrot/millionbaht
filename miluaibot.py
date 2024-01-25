@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Pipe, Process, Queue as ProcQueue, Value
 from multiprocessing.connection import Connection
@@ -13,6 +14,7 @@ import asyncio
 from queue import Queue
 from typing import Any, Optional, Union, Literal
 import yt_dlp
+import subprocess as sp
 
 from src.handler import ProcRequest, SongQueue, get_ydl
 
@@ -137,6 +139,22 @@ async def leave(ctx: commands.Context):
     del QUEUES[guild_id]
 
 
+@BOT.command(name="restart")
+async def restart(ctx: commands.Context, *args):
+    if not usr_in_same_voice_room(ctx):
+        await ctx.send("You have to be in the same voice channel as the bot")
+        return
+    await ctx.send("Restarting...")
+    sp.run(["./restart_miluai"])
+
+
+@BOT.command(name="update")
+async def update(ctx: commands.Context, *args):
+    if not usr_in_same_voice_room(ctx):
+        await ctx.send("You have to be in the same voice channel as the bot")
+        return
+    await ctx.send("Updating...")
+    sp.run(["git", "pull"])
 
 
 def get_queue(ctx: commands.Context) -> SongQueue:

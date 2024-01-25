@@ -1,0 +1,4 @@
+#!/bin/bash
+
+pkill -f miluaibot
+nohup ./miluaibot.py > miluaibot.log 2>&1 &
