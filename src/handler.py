@@ -15,11 +15,10 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 import os
 from dotenv import load_dotenv
-
 import yt_dlp
-from constants import Constants
 
-from typedef import MessageableChannel
+from src.constants import Constants
+from src.typedef import MessageableChannel
 
 
 class ProcRequest(BaseModel):
