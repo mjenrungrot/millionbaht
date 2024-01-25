@@ -12,8 +12,9 @@ from discord import VoiceState, VoiceClient
 import asyncio
 from queue import Queue
 from typing import Any, Optional, Union, Literal
+import yt_dlp
 
-from src.handler import ProcRequest, SongQueue
+from src.handler import ProcRequest, SongQueue, get_ydl
 
 
 # Load Env
@@ -22,7 +23,9 @@ TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
+    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
+).lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
@@ -38,7 +41,9 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
+    intents=discord.Intents(
+        voice_states=True, guilds=True, guild_messages=True, message_content=True
+    ),
 )
 
 
@@ -47,8 +52,8 @@ def parse_request(args: tuple[str, ...]) -> ProcRequest:
     kwargs: dict[str, Any] = {}
     for arg in args:
         if arg.startswith("--"):
-            k, w = arg[2:].split("=")
-            kwargs[k] = w
+            kw = arg[2:].split("=")
+            kwargs[kw[0]] = kw[1] if len(kw) > 1 else True
         else:
             new_args.append(arg)
     return ProcRequest(query=" ".join(new_args), **kwargs)
@@ -71,28 +76,64 @@ async def on_ready():
 
 @BOT.command(name="play", aliases=["p", "pleng", ""])
 async def play(ctx: commands.Context, *args: str):
+    try:
+        req = parse_request(args)
+    except Exception as e:
+        await send_error(ctx, e)
+        return
     voice_client = await enter_voice_channel(ctx)
     if voice_client is None:
         return
     queue = get_queue(ctx)
     queue.validate()
-    request = parse_request(args)
-    queue.put(request, ctx.channel)
+    await ctx.send(f'Looking for "{req.query}" ...')
+    ydl = get_ydl()
+    try:
+        info = ydl.extract_info(req.query, download=False)
+    except yt_dlp.utils.DownloadError as err:
+        await send_error(ctx, err)
+        return
+
+    assert isinstance(info, dict)
+    if "entries" in info:
+        info = info["entries"][0]
+    assert isinstance(info, dict)
+
+    req.query = info["id"]
+    req.title = info["title"]
+    await ctx.send(f"Adding: https://youtu.be/{req.query}")
+    queue.put(req, ctx.channel)
 
 
 @BOT.command(name="skip")
-async def skip(ctx: commands.Context, n_skip: Union[int, Literal['all']] = 1):
+async def skip(ctx: commands.Context, n_skip: Union[int, Literal["all"]] = 1):
     if not usr_in_same_voice_room(ctx):
-        await ctx.send("you have to be in the same voice channel as the bot")
+        await ctx.send("You have to be in the same voice channel as the bot")
         return
-    await ctx.send(f"skipping {n_skip} songs")
+    await ctx.send(f"Skipping {n_skip} songs")
     if n_skip == "all":
         n_skip = -1
     queue = get_queue(ctx)
     queue.skip(n_skip)
 
-    
-    
+
+@BOT.command(name="queue", aliases=["q"])
+async def queue(ctx: commands.Context):
+    if not usr_in_same_voice_room(ctx):
+        await ctx.send("You have to be in the same voice channel as the bot")
+        return
+    queue = get_queue(ctx)
+    await ctx.send("Queue:\n" + queue.get_queue())
+
+
+@BOT.command(name="leave")
+async def leave(ctx: commands.Context):
+    if not usr_in_same_voice_room(ctx):
+        await ctx.send("You have to be in the same voice channel as the bot")
+        return
+    get_queue(ctx).leave()
+
+
 
 def get_queue(ctx: commands.Context) -> SongQueue:
     assert ctx.guild is not None
@@ -105,7 +146,6 @@ def get_queue(ctx: commands.Context) -> SongQueue:
     return queue
 
 
-
 # BOT.voice_clients[0].channel.connect
 
 
@@ -113,7 +153,7 @@ async def enter_voice_channel(ctx: commands.Context) -> Optional[VoiceClient]:
     voice_state = ctx.author.voice or None  # type: ignore
 
     if not isinstance(voice_state, VoiceState):
-        await ctx.send("you have to be in a voice channel to use this command")
+        await ctx.send("You have to be in a voice channel to use this command")
         return None
 
     # if (
@@ -144,6 +184,10 @@ def usr_in_same_voice_room(ctx: commands.Context) -> bool:
     if BOT.user.id not in [member.id for member in voice_state.channel.members]:  # type: ignore
         return False
     return True
+
+
+async def send_error(ctx: commands.Context, err: Exception):
+    await ctx.send(f"Error: ```{type(err).__name__}: {err}```")
 
 
 def main():
