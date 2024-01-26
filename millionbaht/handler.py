@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import Optional
 
 import discord
+import torch
 import yt_dlp
 from discord import FFmpegOpusAudio, VoiceClient
 from discord.ext import commands
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
+import torchaudio
 
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel
@@ -48,6 +50,45 @@ _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
 load_dotenv()
 _YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 
+def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple[torch.Tensor, int]:
+    if speed == 1:
+        return audio, orig_freq
+    if speed < 0:
+        raise ValueError("speed must be positive")
+    
+    print(f"_transform_speed: {speed} Input: {audio.shape}")
+    out, _ = torchaudio.functional.speed(audio, orig_freq=orig_freq, factor=speed)
+    print(f"_transform_speed: {speed} Output: {out.shape}")
+    return out, orig_freq
+
+
+def _transform_semitone(audio: torch.Tensor, orig_freq:int, semitone: float) -> tuple[torch.Tensor, int]:
+    if semitone == 0:
+        return audio, orig_freq
+    
+    if round(semitone) != semitone:
+        raise ValueError("semitone must be integer")
+    
+    print(f"_transform_semitone: {semitone} Input: {audio.shape}")
+    out = torchaudio.functional.pitch_shift(
+        audio, 
+        sample_rate=orig_freq,
+        n_steps=round(semitone),
+        bins_per_octave=12,
+    )
+    print(f"_transform_semitone: {semitone} Output: {out.shape}")
+
+    return audio, orig_freq
+
+def transform_song(path: Path, req: ProcRequest) -> Path:
+    new_path = path.parent / f"{path.stem}_mod{path.suffix}"
+
+    x, rate = torchaudio.load(path)  # type: ignore
+    x, rate = _transform_speed(x, rate, req.speed)
+    x, rate = _transform_semitone(x, rate, req.semitone)
+    torchaudio.save(new_path, x, rate)  # type: ignore
+
+    return new_path
 
 # runs on a different process
 def process_song(req: ProcRequest) -> ProcResponse:
@@ -69,6 +110,11 @@ def process_song(req: ProcRequest) -> ProcResponse:
 
     try:
         path = Constants.SONGDIR / f'{info["id"]}.{info["ext"]}'
+        path = transform_song(path, req)
+    except Exception as e:
+        return ProcResponse.fail(e)
+
+    try:
         return ProcResponse.ok(path, f'https://youtu.be/{info["id"]}')
     except Exception as e:
         return ProcResponse.fail(e)
