@@ -1,24 +1,20 @@
-from asyncio import AbstractEventLoop
-import asyncio
+import os
+import random
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from multiprocessing.sharedctypes import Synchronized
-from multiprocessing.connection import Connection
-from multiprocessing import Process, Queue
-import random
-from typing import Awaitable, Callable, TypedDict, Optional
-from discord import DMChannel, FFmpegOpusAudio, VoiceClient, abc
-import discord
-from discord.ext import commands
-from pydantic import BaseModel, ConfigDict
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor
-import os
-from dotenv import load_dotenv
-import yt_dlp
+from typing import Optional
 
-from src.constants import Constants
-from src.typedef import MessageableChannel
+import discord
+import yt_dlp
+from discord import FFmpegOpusAudio, VoiceClient
+from discord.ext import commands
+from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict
+
+from millionbaht.constants import Constants
+from millionbaht.typedef import MessageableChannel
 
 
 class ProcRequest(BaseModel):
@@ -220,6 +216,7 @@ class SongQueue:
                 to_play.state = State.Playing
 
                 if response.success:
+                    assert to_play.channel is not None
                     self.loop.create_task(
                         to_play.channel.send(
                             f'Now playing: "{to_play.proc_request.title}"'
@@ -234,6 +231,7 @@ class SongQueue:
                         discord.FFmpegOpusAudio(str(response.path)), after=after
                     )
                 else:
+                    assert to_play.channel is not None
                     self.loop.create_task(
                         to_play.channel.send(f"Error: ```{response.message}```")
                     )

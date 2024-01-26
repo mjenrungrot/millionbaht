@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 class Constants:
     OPENING_STATEMENTS = [
         "สวัสดีครับ",

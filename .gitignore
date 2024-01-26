@@ -5,3 +5,5 @@ nohup.out
 .env
 venv
 *.log
+.DS_Store
+*.egg-info/
