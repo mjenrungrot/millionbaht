@@ -119,12 +119,15 @@ class SongQueue:
         if True:
             voice_client = self.get_voice_client()
             if voice_client is not None and not voice_client.is_playing():
-                voice_client.play(
-                    FFmpegOpusAudio(
-                        str(random.choice(list(Constants.OPENNING_OUTDIR.iterdir())))
-                    ),
-                    after=lambda x: self.validate(),
-                )
+                try:
+                    opening_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir()))))
+                    voice_client.play(
+                        FFmpegOpusAudio(str(opening_audio)),
+                        after=lambda x: self.validate(),
+                    )
+                except IndexError:
+                    # TODO: fix when there is no opening audio
+                    pass
 
     async def process_song(self, song: SongRequest):
         # do non-intensive thing here
@@ -176,13 +179,18 @@ class SongQueue:
         if voice_client:
             voice_client.stop()
             def after(err):
+                del err
                 self.loop.create_task(voice_client.disconnect())
-            voice_client.play(
-                FFmpegOpusAudio(
-                    str(random.choice(list(Constants.ENDING_OUTDIR.iterdir())))
-                ),
-                after=after,
-            )
+
+            try:
+                ending_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir()))))
+                voice_client.play(
+                    FFmpegOpusAudio(str(ending_audio)),
+                    after=after,
+                )
+            except IndexError:
+                # TODO: fix when there is no ending audio
+                pass
         
 
     def get_voice_client(self) -> Optional[VoiceClient]:
@@ -224,6 +232,7 @@ class SongQueue:
                     )
 
                     def after(exception):
+                        del exception
                         to_play.state = State.Done
                         self.validate()
 
@@ -237,12 +246,15 @@ class SongQueue:
                     )
             elif self.last_played.state == State.Done:
                 if not self.queue_empty_played:
-                    voice_client.play(
-                        FFmpegOpusAudio(
-                            str(random.choice(list(Constants.EMPTY_OUTDIR.iterdir())))
-                        ),
-                        after=lambda x: self.validate(),
-                    )
+                    try:
+                        empty_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir()))))
+                        voice_client.play(
+                            FFmpegOpusAudio(str(empty_audio)),
+                            after=lambda x: self.validate(),
+                        )
+                    except IndexError:
+                        # TODO: fix when there is no empty audio
+                        pass
                     self.queue_empty_played = True
 
 

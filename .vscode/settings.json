@@ -3,5 +3,6 @@
     "python.languageServer": "Pylance",
     "python.analysis.diagnosticSeverityOverrides": {
         "reportShadowedImports": "none"
-    }
+    },
+    "python.analysis.autoImportCompletions": true
 }

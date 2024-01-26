@@ -1,5 +1,7 @@
 from pathlib import Path
 
+PROJECT_PATH = Path(__file__).parent.parent
+
 
 class Constants:
     OPENING_STATEMENTS = [
@@ -12,7 +14,7 @@ class Constants:
         "สวัสดีครับทุกคน มีเพลงเพราะๆ รอคุณอยู่",
         "สวัสดีค่ะทุกคน มาพร้อมกับเพลงที่ทำให้คุณลืมทุกวัน",
     ]
-    OPENNING_OUTDIR = Path("dl/openning")
+    OPENNING_OUTDIR = PROJECT_PATH / "dl" / "openning"
 
     ENDING_STATEMENTS = [
         "ขอบคุณทุกคนที่ร่วมฟังเราวันนี้ หวังว่าคุณจะมีวันที่สดใส และเราจะพบกันใหม่ในครั้งถัดไปค่ะ",
@@ -21,12 +23,12 @@ class Constants:
         "ขอบคุณทุกคนที่ทำให้วันนี้เป็นวันที่น่าจดจำ เราจะไปพบกับคุณในรอบต่อไป ลาก่อนค่ะ",
         "มาถึงจุดสุดท้ายของรายการวันนี้แล้วค่ะ ขอบคุณทุกคนที่ร่วมฟัง ลาก่อนและหวังว่าคุณจะมีคืนที่สนุกสุข",
     ]
-    ENDING_OUTDIR = Path("dl/ending")
+    ENDING_OUTDIR = PROJECT_PATH / "dl" / "ending"
 
     EMPTY_STATEMENTS = [
         "เพลงหมดแล้ว ขอเพลงเพิ่มด่วน",
     ]
-    EMPTY_OUTDIR = Path("dl/empty")
+    EMPTY_OUTDIR = PROJECT_PATH / "dl" / "empty"
 
     ALL_STATEMENTS = [
         (OPENING_STATEMENTS, OPENNING_OUTDIR),
@@ -34,4 +36,4 @@ class Constants:
         (EMPTY_STATEMENTS, EMPTY_OUTDIR),
     ]
 
-    SONGDIR = Path("dl/songs")
+    SONGDIR = PROJECT_PATH / "dl" / "songs"
