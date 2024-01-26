@@ -111,6 +111,12 @@ async def skip(ctx: commands.Context, n_skip: Union[int, Literal["all"]] = 1):
     queue.skip(n_skip)
 
 
+@BOT.command(name="shutdown")
+async def shutdown(ctx: commands.Context):
+    await ctx.send("Shutting down...")
+    await BOT.close()
+
+
 @BOT.command(name="queue", aliases=["q"])
 async def queue(ctx: commands.Context):
     if not usr_in_same_voice_room(ctx):
