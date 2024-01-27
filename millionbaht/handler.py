@@ -1,10 +1,10 @@
 import os
 import random
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, final
+from typing import Optional, Literal
 
 import discord
 import torch
@@ -55,6 +55,49 @@ load_dotenv()
 _YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 
 
+def _transform_strip(
+    audio: torch.Tensor,
+    orig_freq: int,
+    threshold_sec_left: float = 30.0,
+    threshold_sec_right: float = 30.0,
+    buffer_left_sec: float = 2.0,
+    buffer_right_sec: float = 2.0,
+    pitch_threshold: float = 700.0,
+    pitch_duration: int = 100,
+) -> tuple[torch.Tensor, int]:
+    # find the first frame such that the pitch is below the threshold for at least pitch_duration frames
+
+    print(f"_transform_strip Input: {audio.shape}")
+
+    # LEFT
+    considered_length = max(audio.shape[-1], orig_freq * threshold_sec_left)
+    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., :considered_length], orig_freq)
+    t_axis = torch.linspace(0, considered_length, pitch.shape[-1])
+    is_singing = pitch < pitch_threshold
+    for i, t in enumerate(t_axis):
+        left = i
+        right = min(pitch.shape[-1], i + pitch_duration)
+        if is_singing[..., left:right].all():
+            audio = audio[..., round((t_axis[i] + buffer_left_sec / orig_freq).item()) :]
+            break
+    print(f"_transform_strip Output: {audio.shape}")
+
+    # RIGHT
+    considered_length = max(audio.shape[-1], orig_freq * threshold_sec_right)
+    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., -considered_length:], orig_freq)
+    t_axis = torch.linspace(audio.shape[-1] - considered_length, audio.shape[-1], pitch.shape[-1])
+    is_singing = pitch < pitch_threshold
+    for i in range(pitch.shape[-1] - pitch_duration, -1, -1):
+        t = t_axis[i]
+        left = i
+        right = i + pitch_duration
+        if is_singing[..., left:right].all():
+            audio = audio[..., : round((t_axis[i] + buffer_right_sec / orig_freq).item())]
+            break
+    print(f"_transform_strip Output: {audio.shape}")
+    return audio, orig_freq
+
+
 def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple[torch.Tensor, int]:
     if speed == 1:
         return audio, orig_freq
@@ -82,16 +125,51 @@ def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) ->
         bins_per_octave=12,
     )
     print(f"_transform_semitone: {semitone} Output: {out.shape}")
-
     return audio, orig_freq
+
+
+def _transform_volume(
+    audio: torch.Tensor,
+    orig_freq: int,
+) -> tuple[torch.Tensor, int]:
+    print(f"_transform_volume Input: {audio.shape}")
+    out = audio
+    print(f"_transform_volume Output: {out.shape}")
+    return out, orig_freq
+
+
+def _transform_fade(
+    audio: torch.Tensor,
+    orig_freq: int,
+    fade_in_sec: float = 4.0,
+    fade_out_sec: float = 4.0,
+    fade_shape: Literal["linear", "exponential"] = "exponential",
+) -> tuple[torch.Tensor, int]:
+    print(f"_transform_fade Input: {audio.shape}")
+    fade_in = torch.linspace(0, 1, int(fade_in_sec * orig_freq))
+    ones_in = torch.ones(audio.shape[-1] - len(fade_in))
+    fade_out = torch.linspace(0, 1, int(fade_out_sec * orig_freq))
+    ones_out = torch.ones(audio.shape[-1] - len(fade_out))
+    if fade_shape == "exponential":
+        fade_in = torch.pow(2, (fade_in - 1)) * fade_in
+        fade_out = torch.pow(2, (fade_out - 1)) * fade_out
+
+    fade_in = torch.cat([fade_in, ones_in])
+    fade_out = torch.cat([ones_out, fade_out])
+    output = audio * fade_in * fade_out
+    print(f"_transform_fade Output: {audio.shape}")
+    return output, orig_freq
 
 
 def transform_song(path: Path, req: ProcRequest) -> Path:
     new_path = path.parent / f"{path.stem}_mod{path.suffix}"
 
-    x, rate = torchaudio.load(path)  # type: ignore
+    x, rate = torchaudio.load(path, normalize=True)  # type: ignore
+    x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
     x, rate = _transform_semitone(x, rate, req.semitone)
+    x, rate = _transform_volume(x, rate)
+    x, rate = _transform_fade(x, rate)
     torchaudio.save(new_path, x, rate)  # type: ignore
 
     return new_path
@@ -150,7 +228,10 @@ class SongRequest:
     channel: Optional[MessageableChannel] = None
 
 
-pool = ProcessPoolExecutor(1)
+if os.getenv("DEBUG", False):
+    pool = ThreadPoolExecutor(1)
+else:
+    pool = ProcessPoolExecutor(1)
 
 
 class SongQueue:
