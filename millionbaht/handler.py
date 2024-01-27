@@ -4,7 +4,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, final
 
 import discord
 import torch
@@ -14,9 +14,11 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 import torchaudio
+from millionbaht import gen_tts_constants
 
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel
+from millionbaht.gen_tts_constants import gen_tts_constants
 
 
 class ProcRequest(BaseModel):
@@ -36,7 +38,9 @@ class ProcResponse(BaseModel):
     @classmethod
     def fail(cls, err: Exception) -> "ProcResponse":
         return ProcResponse(
-            success=False, path=Path(), message=f"{type(err)}: {str(err)}"
+            success=False,
+            path=Path(),
+            message=f"{type(err)}: {str(err)}",
         )
 
     @classmethod
@@ -50,28 +54,29 @@ _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
 load_dotenv()
 _YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 
+
 def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple[torch.Tensor, int]:
     if speed == 1:
         return audio, orig_freq
     if speed < 0:
         raise ValueError("speed must be positive")
-    
+
     print(f"_transform_speed: {speed} Input: {audio.shape}")
     out, _ = torchaudio.functional.speed(audio, orig_freq=orig_freq, factor=speed)
     print(f"_transform_speed: {speed} Output: {out.shape}")
     return out, orig_freq
 
 
-def _transform_semitone(audio: torch.Tensor, orig_freq:int, semitone: float) -> tuple[torch.Tensor, int]:
+def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) -> tuple[torch.Tensor, int]:
     if semitone == 0:
         return audio, orig_freq
-    
+
     if round(semitone) != semitone:
         raise ValueError("semitone must be integer")
-    
+
     print(f"_transform_semitone: {semitone} Input: {audio.shape}")
     out = torchaudio.functional.pitch_shift(
-        audio, 
+        audio,
         sample_rate=orig_freq,
         n_steps=round(semitone),
         bins_per_octave=12,
@@ -79,6 +84,7 @@ def _transform_semitone(audio: torch.Tensor, orig_freq:int, semitone: float) -> 
     print(f"_transform_semitone: {semitone} Output: {out.shape}")
 
     return audio, orig_freq
+
 
 def transform_song(path: Path, req: ProcRequest) -> Path:
     new_path = path.parent / f"{path.stem}_mod{path.suffix}"
@@ -89,6 +95,7 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
     torchaudio.save(new_path, x, rate)  # type: ignore
 
     return new_path
+
 
 # runs on a different process
 def process_song(req: ProcRequest) -> ProcResponse:
@@ -153,9 +160,7 @@ class SongQueue:
         self.bot = bot
         self.loop = bot.loop
         self.guild_id = guild_id
-        self.head = SongRequest(
-            _DUMMY_PROC_REQUEST, _DUMMY_PROC_RESPONSE, state=State.Done
-        )
+        self.head = SongRequest(_DUMMY_PROC_REQUEST, _DUMMY_PROC_RESPONSE, state=State.Done)
         self.last_processed = self.head  # last AwaitingPlay or Processing
         self.last_played = self.head  # last Done
         self.last = self.head
@@ -166,22 +171,33 @@ class SongQueue:
             voice_client = self.get_voice_client()
             if voice_client is not None and not voice_client.is_playing():
                 try:
-                    opening_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir()))))
+                    opening_audio = random.choice(
+                        list(
+                            filter(
+                                lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir())
+                            )
+                        )
+                    )
+                except IndexError:
+                    gen_tts_constants(Constants.OPENING_STATEMENTS, Constants.OPENNING_OUTDIR)
+                finally:
+                    opening_audio = random.choice(
+                        list(
+                            filter(
+                                lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir())
+                            )
+                        )
+                    )
                     voice_client.play(
                         FFmpegOpusAudio(str(opening_audio)),
                         after=lambda x: self.validate(),
                     )
-                except IndexError:
-                    # TODO: fix when there is no opening audio
-                    pass
 
     async def process_song(self, song: SongRequest):
         # do non-intensive thing here
         if song.channel is not None:
             await song.channel.send(f'Processing "{song.proc_request.title}" ...')
-        song.proc_response = await self.loop.run_in_executor(
-            pool, process_song, song.proc_request
-        )
+        song.proc_response = await self.loop.run_in_executor(pool, process_song, song.proc_request)
         song.state = State.AwaitingPlay
         self.validate()
 
@@ -219,25 +235,30 @@ class SongQueue:
         if res:
             return "\n".join(res)
         return ":: empty ::"
-    
+
     def leave(self):
         voice_client = self.get_voice_client()
         if voice_client:
             voice_client.stop()
+
             def after(err):
                 del err
                 self.loop.create_task(voice_client.disconnect())
 
             try:
-                ending_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir()))))
+                ending_audio = random.choice(
+                    list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir())))
+                )
+            except IndexError:
+                gen_tts_constants(Constants.ENDING_STATEMENTS, Constants.ENDING_OUTDIR)
+            finally:
+                ending_audio = random.choice(
+                    list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir())))
+                )
                 voice_client.play(
                     FFmpegOpusAudio(str(ending_audio)),
                     after=after,
                 )
-            except IndexError:
-                # TODO: fix when there is no ending audio
-                pass
-        
 
     def get_voice_client(self) -> Optional[VoiceClient]:
         for voice_client in self.bot.voice_clients:
@@ -256,9 +277,7 @@ class SongQueue:
             self.last_processed.state = State.Processing
             self.loop.create_task(self.process_song(self.last_processed))
 
-        while (
-            self.last_played.state == State.Done and self.last_played.next is not None
-        ):
+        while self.last_played.state == State.Done and self.last_played.next is not None:
             self.last_played = self.last_played.next
 
         voice_client = self.get_voice_client()
@@ -271,36 +290,41 @@ class SongQueue:
 
                 if response.success:
                     assert to_play.channel is not None
-                    self.loop.create_task(
-                        to_play.channel.send(
-                            f'Now playing: "{to_play.proc_request.title}"'
-                        )
-                    )
+                    self.loop.create_task(to_play.channel.send(f'Now playing: "{to_play.proc_request.title}"'))
 
                     def after(exception):
                         del exception
                         to_play.state = State.Done
                         self.validate()
 
-                    voice_client.play(
-                        discord.FFmpegOpusAudio(str(response.path)), after=after
-                    )
+                    voice_client.play(discord.FFmpegOpusAudio(str(response.path)), after=after)
                 else:
                     assert to_play.channel is not None
-                    self.loop.create_task(
-                        to_play.channel.send(f"Error: ```{response.message}```")
-                    )
+                    self.loop.create_task(to_play.channel.send(f"Error: ```{response.message}```"))
             elif self.last_played.state == State.Done:
                 if not self.queue_empty_played:
                     try:
-                        empty_audio = random.choice(list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir()))))
+                        empty_audio = random.choice(
+                            list(
+                                filter(
+                                    lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir())
+                                )
+                            )
+                        )
+                    except IndexError:
+                        gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
+                    finally:
+                        empty_audio = random.choice(
+                            list(
+                                filter(
+                                    lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir())
+                                )
+                            )
+                        )
                         voice_client.play(
                             FFmpegOpusAudio(str(empty_audio)),
                             after=lambda x: self.validate(),
                         )
-                    except IndexError:
-                        # TODO: fix when there is no empty audio
-                        pass
                     self.queue_empty_played = True
 
 

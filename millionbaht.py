@@ -11,15 +11,14 @@ from dotenv import load_dotenv
 
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl
 
+
 # Load Env
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
-    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
-).lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
@@ -35,9 +34,7 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(
-        voice_states=True, guilds=True, guild_messages=True, message_content=True
-    ),
+    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
 )
 
 
@@ -139,15 +136,17 @@ async def leave(ctx: commands.Context):
 
 @BOT.command(name="restart")
 async def restart(ctx: commands.Context, *args):
+    del args
     if not usr_in_same_voice_room(ctx):
         await ctx.send("You have to be in the same voice channel as the bot")
         return
     await ctx.send("Restarting...")
-    sp.run(["./restart_miluai"])
+    sp.run(["./restart"])
 
 
 @BOT.command(name="update")
 async def update(ctx: commands.Context, *args):
+    del args
     if not usr_in_same_voice_room(ctx):
         await ctx.send("You have to be in the same voice channel as the bot")
         return
