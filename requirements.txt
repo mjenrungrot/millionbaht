@@ -10,3 +10,4 @@ torch-pitch-shift
 inflect
 typeguard
 pydantic
+litellm

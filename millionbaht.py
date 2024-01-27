@@ -8,6 +8,8 @@ import yt_dlp
 from discord import VoiceClient, VoiceState
 from discord.ext import commands
 from dotenv import load_dotenv
+from litellm import completion
+
 
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl
 
@@ -24,6 +26,7 @@ BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "t",
     "1",
 )
+
 try:
     COLOR = int(os.getenv("BOT_COLOR", "ff0000"), 16)
 except ValueError:
@@ -94,6 +97,26 @@ async def play(ctx: commands.Context, *args: str):
     req.title = info["title"]
     await ctx.send(f"Adding: https://youtu.be/{req.query}")
     queue.put(req, ctx.channel)
+
+@BOT.command(name="llm")
+async def ask_llm(ctx: commands.Context, *args: str):
+    try:
+        req = parse_request(args)
+        query = req.query
+        assert isinstance(query, str)
+        response = completion(
+                model="cloudflare/@hf/thebloke/codellama-7b-instruct-awq", 
+                messages=[
+                {"role": "user", "content": query}
+            ],
+                stream=True
+            )
+        for chunk in response:
+            await ctx.send(chunk)
+    except Exception as e:
+        await send_error(ctx, e)
+        return
+
 
 
 @BOT.command(name="skip")
