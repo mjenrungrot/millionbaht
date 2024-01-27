@@ -22,7 +22,7 @@ from millionbaht.typedef import MessageableChannel
 from millionbaht.gen_tts_constants import gen_tts_constants
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +32,7 @@ class ProcRequest(BaseModel):
     title: str = ""
     semitone: float = 0
     speed: float = 1
+    fast: bool = False
 
 
 class ProcResponse(BaseModel):
@@ -174,9 +175,11 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
 
     logger.info(f"start transform_song: {req} -> {new_path}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
-    x, rate = _transform_strip(x, rate)
+    if not req.fast:
+        x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
-    x, rate = _transform_semitone(x, rate, req.semitone)
+    if not req.fast:
+        x, rate = _transform_semitone(x, rate, req.semitone)
     x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
     torchaudio.save(new_path, x, rate)  # type: ignore
