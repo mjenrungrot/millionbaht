@@ -177,11 +177,19 @@ async def update(ctx: commands.Context, *args):
     sp.run(["git", "pull"])
 
 
+@BOT.command(name="auto")
+async def auto(ctx: commands.Context, state: bool = True):
+    queue = get_queue(ctx)
+    queue.set_is_auto_state(state)
+    await ctx.send(f"auto mode is now {queue.is_auto}")
+
+
 def get_queue(ctx: commands.Context) -> SongQueue:
     assert ctx.guild is not None
     guild_id = ctx.guild.id
     if not guild_id in QUEUES:
         queue = SongQueue(BOT, guild_id)
+        queue.set_context(ctx)
         QUEUES[guild_id] = queue
     else:
         queue = QUEUES[guild_id]

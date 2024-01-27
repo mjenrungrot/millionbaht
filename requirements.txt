@@ -11,3 +11,4 @@ inflect
 typeguard
 pydantic
 litellm
+langdetect

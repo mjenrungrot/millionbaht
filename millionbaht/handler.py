@@ -32,10 +32,14 @@ class ProcRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str
     title: str = ""
+    path: Optional[Path] = None
     semitone: float = 0
     speed: float = 1
     fast: bool = False
     force_tts: bool = False
+    skip_tts: bool = False
+    ## Internal
+    is_auto: bool = False
 
 
 class ProcResponse(BaseModel):
@@ -70,6 +74,7 @@ def _transform_title(
     title: str,
     max_duration: float = 10.0,
     force_tts: bool = False,
+    message_prefix: str = "เพลง ",
 ) -> tuple[torch.Tensor, int]:
     # if query is hard to understand, use title instead
     logger.info(f"_transform_title Input: {audio.shape}")
@@ -78,7 +83,7 @@ def _transform_title(
         audio = audio.unsqueeze(0)
 
     # preprocess message
-    message = title
+    message = f"{message_prefix}{title}"
     message = message.lower()
     message = message.replace("official mv", "")
 
@@ -219,7 +224,8 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
         x, rate = _transform_semitone(x, rate, req.semitone)
     x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
-    x, rate = _transform_title(x, rate, req.title)
+    if not req.skip_tts:
+        x, rate = _transform_title(x, rate, req.title)
     torchaudio.save(new_path, x, rate)  # type: ignore
     logger.info(f"end transform_song: {req} -> {new_path}")
     return new_path
@@ -227,32 +233,40 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
 
 # runs on a different process
 def process_song(req: ProcRequest) -> ProcResponse:
-    ydl = get_ydl()
-    try:
-        info = ydl.extract_info(req.query, download=False)
-    except yt_dlp.utils.DownloadError as err:
-        return ProcResponse.fail(err)
+    is_auto = req.is_auto
+    if not is_auto:
+        ydl = get_ydl()
+        try:
+            info = ydl.extract_info(req.query, download=False)
+        except yt_dlp.utils.DownloadError as err:
+            return ProcResponse.fail(err)
 
-    assert isinstance(info, dict)
-    if "entries" in info:
-        info = info["entries"][0]
-    assert isinstance(info, dict)
+        assert isinstance(info, dict)
+        if "entries" in info:
+            info = info["entries"][0]
+        assert isinstance(info, dict)
 
-    try:
-        ydl.download([req.query])
-    except yt_dlp.utils.DownloadError as err:
-        return ProcResponse.fail(err)
+        try:
+            ydl.download([req.query])
+        except yt_dlp.utils.DownloadError as err:
+            return ProcResponse.fail(err)
 
-    try:
-        path = Constants.SONGDIR / f'{info["id"]}.{info["ext"]}'
-        path = transform_song(path, req)
-    except Exception as e:
-        return ProcResponse.fail(e)
+        # only transform if not auto
+        if not req.is_auto:
+            try:
+                path = Constants.SONGDIR / f'{info["id"]}.{info["ext"]}'
+                path = transform_song(path, req)
+            except Exception as e:
+                return ProcResponse.fail(e)
 
-    try:
-        return ProcResponse.ok(path, f'https://youtu.be/{info["id"]}')
-    except Exception as e:
-        return ProcResponse.fail(e)
+        try:
+            return ProcResponse.ok(path, f'https://youtu.be/{info["id"]}')
+        except Exception as e:
+            return ProcResponse.fail(e)
+    else:
+        assert req.path is not None
+        response = ProcResponse.ok(req.path, f"https://youtu.be/{req.query}")
+        return response
 
 
 pool = ProcessPoolExecutor(1)
@@ -297,6 +311,8 @@ class SongQueue:
         self.last = self.head
         self.queue_empty_played = True
         self.size = 0
+        self.is_auto = False  # auto play next song
+        self.current_context: Optional[commands.Context] = None
 
         if True:
             voice_client = self.get_voice_client()
@@ -324,10 +340,17 @@ class SongQueue:
                         after=lambda x: self.validate(),
                     )
 
+    def set_is_auto_state(self, state: bool):
+        self.is_auto = state
+
+    def set_context(self, ctx: commands.Context):
+        self.current_context = ctx
+
     async def process_song(self, song: SongRequest):
         # do non-intensive thing here
         if song.channel is not None:
-            await song.channel.send(f'Processing "{song.proc_request.title}" ...')
+            if len(song.proc_request.title) > 0:
+                await song.channel.send(f'Processing "{song.proc_request.title}" ...')
         song.proc_response = await self.loop.run_in_executor(pool, process_song, song.proc_request)
         song.state = State.AwaitingPlay
         self.validate()
@@ -421,7 +444,8 @@ class SongQueue:
 
                 if response.success:
                     assert to_play.channel is not None
-                    self.loop.create_task(to_play.channel.send(f'Now playing: "{to_play.proc_request.title}"'))
+                    if len(to_play.proc_request.title) > 0:
+                        self.loop.create_task(to_play.channel.send(f'Now playing: "{to_play.proc_request.title}"'))
 
                     def after(exception):
                         del exception
@@ -433,30 +457,55 @@ class SongQueue:
                     assert to_play.channel is not None
                     self.loop.create_task(to_play.channel.send(f"Error: ```{response.message}```"))
             elif self.last_played.state == State.Done:
-                if not self.queue_empty_played:
-                    try:
-                        empty_audio = random.choice(
-                            list(
-                                filter(
-                                    lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir())
-                                )
+                if self.is_auto:
+                    assert self.current_context is not None
+                    random_song_path = random.choice(
+                        list(
+                            filter(
+                                lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("._mod.mp4")),
+                                list(Constants.SONGDIR.iterdir()),
                             )
                         )
-                    except IndexError:
-                        gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
-                    finally:
-                        empty_audio = random.choice(
-                            list(
-                                filter(
-                                    lambda x: not x.name.endswith(".gitignore"), list(Constants.EMPTY_OUTDIR.iterdir())
+                    )
+
+                    req = ProcRequest(
+                        query=str(random_song_path.stem.removeprefix("._mod")),
+                        title="",
+                        path=random_song_path,
+                        semitone=0,
+                        speed=1,
+                        skip_tts=True,
+                        is_auto=True,
+                    )
+                    channel = self.current_context.channel
+                    self.put(req, channel)
+                else:
+                    if not self.queue_empty_played:
+                        try:
+                            empty_audio = random.choice(
+                                list(
+                                    filter(
+                                        lambda x: not x.name.endswith(".gitignore"),
+                                        list(Constants.EMPTY_OUTDIR.iterdir()),
+                                    )
                                 )
                             )
-                        )
-                        voice_client.play(
-                            FFmpegOpusAudio(str(empty_audio)),
-                            after=lambda x: self.validate(),
-                        )
-                    self.queue_empty_played = True
+                        except IndexError:
+                            gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
+                        finally:
+                            empty_audio = random.choice(
+                                list(
+                                    filter(
+                                        lambda x: not x.name.endswith(".gitignore"),
+                                        list(Constants.EMPTY_OUTDIR.iterdir()),
+                                    )
+                                )
+                            )
+                            voice_client.play(
+                                FFmpegOpusAudio(str(empty_audio)),
+                                after=lambda x: self.validate(),
+                            )
+                        self.queue_empty_played = True
 
 
 def get_ydl() -> yt_dlp.YoutubeDL:
