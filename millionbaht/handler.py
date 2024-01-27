@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, Literal
 
+from io import BytesIO
 import discord
 import torch
 import yt_dlp
@@ -15,8 +16,9 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 import torchaudio
-from millionbaht import gen_tts_constants
+from gtts import gTTS
 
+from millionbaht import gen_tts_constants
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel
 from millionbaht.gen_tts_constants import gen_tts_constants
@@ -33,6 +35,7 @@ class ProcRequest(BaseModel):
     semitone: float = 0
     speed: float = 1
     fast: bool = False
+    force_tts: bool = False
 
 
 class ProcResponse(BaseModel):
@@ -59,6 +62,40 @@ _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
 
 load_dotenv()
 _YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
+
+
+def _transform_title(
+    audio: torch.Tensor,
+    orig_freq: int,
+    title: str,
+    max_duration: float = 10.0,
+    force_tts: bool = False,
+) -> tuple[torch.Tensor, int]:
+    # if query is hard to understand, use title instead
+    logger.info(f"_transform_title Input: {audio.shape}")
+
+    if audio.ndim == 1:
+        audio = audio.unsqueeze(0)
+
+    # preprocess message
+    message = title
+    message = message.lower()
+    message = message.replace("official mv", "")
+
+    audio_fd = BytesIO()
+    gTTS(message, lang="th").write_to_fp(audio_fd)
+    audio_fd.seek(0)
+
+    audio_tts, tts_rate = torchaudio.load(audio_fd, format="mp3")  # type: ignore
+    audio_fd.close()
+    if force_tts or audio_tts.shape[-1] / tts_rate < max_duration:
+        audio_tts = torchaudio.functional.resample(audio_tts, tts_rate, orig_freq)
+        if audio_tts.shape[0] != audio.shape[0]:
+            audio_tts = audio_tts.repeat(audio.shape[0], 1)
+        out = torch.cat([audio_tts, audio], dim=-1)
+        return out, orig_freq
+
+    return audio, orig_freq
 
 
 def _transform_strip(
@@ -175,6 +212,7 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
 
     logger.info(f"start transform_song: {req} -> {new_path}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
+    x, rate = _transform_title(x, rate, req.title)
     if not req.fast:
         x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
