@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -19,6 +20,10 @@ from millionbaht import gen_tts_constants
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel
 from millionbaht.gen_tts_constants import gen_tts_constants
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ProcRequest(BaseModel):
@@ -67,7 +72,7 @@ def _transform_strip(
 ) -> tuple[torch.Tensor, int]:
     # find the first frame such that the pitch is below the threshold for at least pitch_duration frames
 
-    print(f"_transform_strip Input: {audio.shape}")
+    logger.info(f"_transform_strip Input: {audio.shape}")
 
     # LEFT
     considered_length = max(audio.shape[-1], orig_freq * threshold_sec_left)
@@ -80,7 +85,7 @@ def _transform_strip(
         if is_singing[..., left:right].all():
             audio = audio[..., round((t_axis[i] + buffer_left_sec / orig_freq).item()) :]
             break
-    print(f"_transform_strip Output: {audio.shape}")
+    logger.info(f"_transform_strip Output: {audio.shape}")
 
     # RIGHT
     considered_length = max(audio.shape[-1], orig_freq * threshold_sec_right)
@@ -94,7 +99,7 @@ def _transform_strip(
         if is_singing[..., left:right].all():
             audio = audio[..., : round((t_axis[i] + buffer_right_sec / orig_freq).item())]
             break
-    print(f"_transform_strip Output: {audio.shape}")
+    logger.info(f"_transform_strip Output: {audio.shape}")
     return audio, orig_freq
 
 
@@ -104,9 +109,9 @@ def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple
     if speed < 0:
         raise ValueError("speed must be positive")
 
-    print(f"_transform_speed: {speed} Input: {audio.shape}")
+    logger.info(f"_transform_speed: {speed} Input: {audio.shape}")
     out, _ = torchaudio.functional.speed(audio, orig_freq=orig_freq, factor=speed)
-    print(f"_transform_speed: {speed} Output: {out.shape}")
+    logger.info(f"_transform_speed: {speed} Output: {out.shape}")
     return out, orig_freq
 
 
@@ -117,24 +122,27 @@ def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) ->
     if round(semitone) != semitone:
         raise ValueError("semitone must be integer")
 
-    print(f"_transform_semitone: {semitone} Input: {audio.shape}")
+    logger.info(f"_transform_semitone: {semitone} Input: {audio.shape}")
     out = torchaudio.functional.pitch_shift(
         audio,
         sample_rate=orig_freq,
         n_steps=round(semitone),
         bins_per_octave=12,
     )
-    print(f"_transform_semitone: {semitone} Output: {out.shape}")
+    logger.info(f"_transform_semitone: {semitone} Output: {out.shape}")
     return audio, orig_freq
 
 
 def _transform_volume(
     audio: torch.Tensor,
     orig_freq: int,
+    target_db: float = 0.0,
 ) -> tuple[torch.Tensor, int]:
-    print(f"_transform_volume Input: {audio.shape}")
-    out = audio
-    print(f"_transform_volume Output: {out.shape}")
+    logger.info(f"_transform_volume Input: {audio.shape}")
+    loudness = torchaudio.functional.loudness(audio, orig_freq).item()
+    gain = target_db - loudness
+    out = torchaudio.functional.gain(audio, gain)
+    logger.info(f"_transform_volume Output: {out.shape}")
     return out, orig_freq
 
 
@@ -145,7 +153,7 @@ def _transform_fade(
     fade_out_sec: float = 4.0,
     fade_shape: Literal["linear", "exponential"] = "exponential",
 ) -> tuple[torch.Tensor, int]:
-    print(f"_transform_fade Input: {audio.shape}")
+    logger.info(f"_transform_fade Input: {audio.shape}")
     fade_in = torch.linspace(0, 1, int(fade_in_sec * orig_freq))
     ones_in = torch.ones(audio.shape[-1] - len(fade_in))
     fade_out = torch.linspace(0, 1, int(fade_out_sec * orig_freq))
@@ -157,13 +165,14 @@ def _transform_fade(
     fade_in = torch.cat([fade_in, ones_in])
     fade_out = torch.cat([ones_out, fade_out])
     output = audio * fade_in * fade_out
-    print(f"_transform_fade Output: {audio.shape}")
+    logger.info(f"_transform_fade Output: {audio.shape}")
     return output, orig_freq
 
 
 def transform_song(path: Path, req: ProcRequest) -> Path:
     new_path = path.parent / f"{path.stem}_mod{path.suffix}"
 
+    logger.info(f"start transform_song: {req} -> {new_path}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
     x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
@@ -171,7 +180,7 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
     x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
     torchaudio.save(new_path, x, rate)  # type: ignore
-
+    logger.info(f"end transform_song: {req} -> {new_path}")
     return new_path
 
 
