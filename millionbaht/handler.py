@@ -212,7 +212,6 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
 
     logger.info(f"start transform_song: {req} -> {new_path}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
-    x, rate = _transform_title(x, rate, req.title)
     if not req.fast:
         x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
@@ -220,6 +219,7 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
         x, rate = _transform_semitone(x, rate, req.semitone)
     x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
+    x, rate = _transform_title(x, rate, req.title)
     torchaudio.save(new_path, x, rate)  # type: ignore
     logger.info(f"end transform_song: {req} -> {new_path}")
     return new_path
