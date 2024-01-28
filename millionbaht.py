@@ -20,9 +20,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
-    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
-).lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
@@ -39,9 +37,7 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(
-        voice_states=True, guilds=True, guild_messages=True, message_content=True
-    ),
+    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
 )
 
 
@@ -72,7 +68,7 @@ async def on_ready():
     print(f"logged in successfully as {BOT.user.name}")
 
 
-@BOT.command(name="play", aliases=["p", "pleng", ""])
+@BOT.command(name="play", aliases=["p", "pleng", ""], brief="Play a song")
 async def play(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
@@ -103,7 +99,7 @@ async def play(ctx: commands.Context, *args: str):
     queue.put(req, ctx.channel)
 
 
-@BOT.command(name="code")
+@BOT.command(name="code", brief="Prompt with codellama-7b-instruct-awq")
 async def llm_code(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
@@ -129,7 +125,7 @@ async def llm_code(ctx: commands.Context, *args: str):
         return
 
 
-@BOT.command(name="chat")
+@BOT.command(name="chat", brief="Prompt with llama-2-7b-chat-fp16")
 async def llm_chat(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
@@ -155,7 +151,7 @@ async def llm_chat(ctx: commands.Context, *args: str):
         return
 
 
-@BOT.command(name="skip")
+@BOT.command(name="skip", brief="Skip a song")
 async def skip(ctx: commands.Context, n_skip: Union[int, Literal["all"]] = 1):
     if not usr_in_same_voice_room(ctx):
         await ctx.send("You have to be in the same voice channel as the bot")
@@ -167,13 +163,13 @@ async def skip(ctx: commands.Context, n_skip: Union[int, Literal["all"]] = 1):
     queue.skip(n_skip)
 
 
-@BOT.command(name="shutdown")
+@BOT.command(name="shutdown", brief="Shutdown the bot")
 async def shutdown(ctx: commands.Context):
     await ctx.send("Shutting down...")
     await BOT.close()
 
 
-@BOT.command(name="queue", aliases=["q"])
+@BOT.command(name="queue", aliases=["q"], brief="Show the queue")
 async def queue(ctx: commands.Context):
     if not usr_in_same_voice_room(ctx):
         await ctx.send("You have to be in the same voice channel as the bot")
@@ -182,7 +178,7 @@ async def queue(ctx: commands.Context):
     await ctx.send("Queue:\n" + queue.get_queue())
 
 
-@BOT.command(name="leave")
+@BOT.command(name="leave", brief="Leave the voice channel")
 async def leave(ctx: commands.Context):
     if not usr_in_same_voice_room(ctx):
         await ctx.send("You have to be in the same voice channel as the bot")
@@ -193,7 +189,7 @@ async def leave(ctx: commands.Context):
     del QUEUES[guild_id]
 
 
-@BOT.command(name="restart")
+@BOT.command(name="restart", brief="Restart the bot [all servers]")
 async def restart(ctx: commands.Context, *args):
     del args
     if not usr_in_same_voice_room(ctx):
@@ -203,7 +199,7 @@ async def restart(ctx: commands.Context, *args):
     sp.run(["./restart"])
 
 
-@BOT.command(name="update")
+@BOT.command(name="update", brief="Update the bot [all servers]")
 async def update(ctx: commands.Context, *args):
     del args
     if not usr_in_same_voice_room(ctx):
@@ -213,7 +209,7 @@ async def update(ctx: commands.Context, *args):
     sp.run(["git", "pull"])
 
 
-@BOT.command(name="auto")
+@BOT.command(name="auto", brief="Turn on autoplay mode. Usage: auto [true/false]")
 async def auto(ctx: commands.Context, state: bool = True):
     queue = get_queue(ctx)
     queue.set_is_auto_state(state)
