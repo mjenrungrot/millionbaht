@@ -8,7 +8,7 @@ import yt_dlp
 from discord import VoiceClient, VoiceState
 from discord.ext import commands
 from dotenv import load_dotenv
-from litellm import completion
+from litellm import acompletion
 
 
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl
@@ -109,13 +109,13 @@ async def ask_llm(ctx: commands.Context, *args: str):
         req = parse_request(args)
         query = req.query
         assert isinstance(query, str)
-        response = completion(
+        response = await acompletion(
             model="cloudflare/@hf/thebloke/codellama-7b-instruct-awq",
             messages=[{"role": "user", "content": query}],
             stream=True,
         )
         outputs = []
-        for chunk in response:
+        async for chunk in response:
             outputs.append(chunk["choices"][0]["delta"]["content"])
             if len(outputs) > 10:
                 await ctx.send("".join(outputs))
