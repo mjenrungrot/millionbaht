@@ -488,11 +488,12 @@ class SongQueue:
                                 is_auto=True,
                             )
                             channel = self.current_context.channel
+                            logger.info(f"Before {self.get_queue()=}")
                             self.put(req, channel)
-                            self.validate()
+                            logger.info(f"After {self.get_queue()=}")
                         except Exception as e:
-                            print(list(Constants.SONGDIR.iterdir()))
-                            print("No song found")
+                            logger.info(f"{list(Constants.SONGDIR.iterdir())=}")
+                            logger.info("No song found")
                     else:
                         try:
                             empty_audio = random.choice(
@@ -518,7 +519,7 @@ class SongQueue:
                                 FFmpegOpusAudio(str(empty_audio)),
                                 after=lambda x: self.validate(),
                             )
-                    self.queue_empty_played = True
+                        self.queue_empty_played = True
 
 
 def get_ydl() -> yt_dlp.YoutubeDL:

@@ -243,7 +243,10 @@ async def update(ctx: commands.Context, *args):
         await ctx.send("You have to be in the same voice channel as the bot")
         return
     await ctx.send("Updating...")
-    sp.run(["git", "pull"])
+    command = ["git", "pull"]
+    output = sp.check_output(command)
+    embed = discord.Embed(title="Update", description=output.decode("utf-8"), color=COLOR)
+    await ctx.send(embed=embed)
 
 
 @BOT.command(name="auto", brief="Turn on autoplay mode. Usage: auto [true/false]")
