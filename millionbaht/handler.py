@@ -24,7 +24,9 @@ from millionbaht.typedef import MessageableChannel
 from millionbaht.gen_tts_constants import gen_tts_constants
 
 
-logging.basicConfig(format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO)
+logging.basicConfig(
+    format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 
@@ -119,34 +121,46 @@ def _transform_strip(
 
     # LEFT
     considered_length = max(audio.shape[-1], orig_freq * threshold_sec_left)
-    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., :considered_length], orig_freq)
+    pitch = torchaudio.functional.detect_pitch_frequency(
+        audio[..., :considered_length], orig_freq
+    )
     t_axis = torch.linspace(0, considered_length, pitch.shape[-1])
     is_singing = pitch < pitch_threshold
     for i, t in enumerate(t_axis):
         left = i
         right = min(pitch.shape[-1], i + pitch_duration)
         if is_singing[..., left:right].all():
-            audio = audio[..., round((t_axis[i] + buffer_left_sec / orig_freq).item()) :]
+            audio = audio[
+                ..., round((t_axis[i] + buffer_left_sec / orig_freq).item()) :
+            ]
             break
     logger.info(f"_transform_strip Output: {audio.shape}")
 
     # RIGHT
     considered_length = max(audio.shape[-1], orig_freq * threshold_sec_right)
-    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., -considered_length:], orig_freq)
-    t_axis = torch.linspace(audio.shape[-1] - considered_length, audio.shape[-1], pitch.shape[-1])
+    pitch = torchaudio.functional.detect_pitch_frequency(
+        audio[..., -considered_length:], orig_freq
+    )
+    t_axis = torch.linspace(
+        audio.shape[-1] - considered_length, audio.shape[-1], pitch.shape[-1]
+    )
     is_singing = pitch < pitch_threshold
     for i in range(pitch.shape[-1] - pitch_duration, -1, -1):
         t = t_axis[i]
         left = i
         right = i + pitch_duration
         if is_singing[..., left:right].all():
-            audio = audio[..., : round((t_axis[i] + buffer_right_sec / orig_freq).item())]
+            audio = audio[
+                ..., : round((t_axis[i] + buffer_right_sec / orig_freq).item())
+            ]
             break
     logger.info(f"_transform_strip Output: {audio.shape}")
     return audio, orig_freq
 
 
-def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple[torch.Tensor, int]:
+def _transform_speed(
+    audio: torch.Tensor, orig_freq: int, speed: float
+) -> tuple[torch.Tensor, int]:
     if speed == 1:
         return audio, orig_freq
     if speed < 0:
@@ -158,7 +172,9 @@ def _transform_speed(audio: torch.Tensor, orig_freq: int, speed: float) -> tuple
     return out, orig_freq
 
 
-def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) -> tuple[torch.Tensor, int]:
+def _transform_semitone(
+    audio: torch.Tensor, orig_freq: int, semitone: float
+) -> tuple[torch.Tensor, int]:
     if semitone == 0:
         return audio, orig_freq
 
@@ -305,7 +321,9 @@ class SongQueue:
         self.bot = bot
         self.loop = bot.loop
         self.guild_id = guild_id
-        self.head = SongRequest(_DUMMY_PROC_REQUEST, _DUMMY_PROC_RESPONSE, state=State.Done)
+        self.head = SongRequest(
+            _DUMMY_PROC_REQUEST, _DUMMY_PROC_RESPONSE, state=State.Done
+        )
         self.last_processed = self.head  # last AwaitingPlay or Processing
         self.last_played = self.head  # last Done
         self.last = self.head
@@ -321,17 +339,21 @@ class SongQueue:
                     opening_audio = random.choice(
                         list(
                             filter(
-                                lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir())
+                                lambda x: not x.name.endswith(".gitignore"),
+                                list(Constants.OPENNING_OUTDIR.iterdir()),
                             )
                         )
                     )
                 except IndexError:
-                    gen_tts_constants(Constants.OPENING_STATEMENTS, Constants.OPENNING_OUTDIR)
+                    gen_tts_constants(
+                        Constants.OPENING_STATEMENTS, Constants.OPENNING_OUTDIR
+                    )
                 finally:
                     opening_audio = random.choice(
                         list(
                             filter(
-                                lambda x: not x.name.endswith(".gitignore"), list(Constants.OPENNING_OUTDIR.iterdir())
+                                lambda x: not x.name.endswith(".gitignore"),
+                                list(Constants.OPENNING_OUTDIR.iterdir()),
                             )
                         )
                     )
@@ -351,7 +373,9 @@ class SongQueue:
         if song.channel is not None:
             if len(song.proc_request.title) > 0:
                 await song.channel.send(f'Processing "{song.proc_request.title}" ...')
-        song.proc_response = await self.loop.run_in_executor(pool, process_song, song.proc_request)
+        song.proc_response = await self.loop.run_in_executor(
+            pool, process_song, song.proc_request
+        )
         song.state = State.AwaitingPlay
         self.validate()
 
@@ -401,13 +425,23 @@ class SongQueue:
 
             try:
                 ending_audio = random.choice(
-                    list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir())))
+                    list(
+                        filter(
+                            lambda x: not x.name.endswith(".gitignore"),
+                            list(Constants.ENDING_OUTDIR.iterdir()),
+                        )
+                    )
                 )
             except IndexError:
                 gen_tts_constants(Constants.ENDING_STATEMENTS, Constants.ENDING_OUTDIR)
             finally:
                 ending_audio = random.choice(
-                    list(filter(lambda x: not x.name.endswith(".gitignore"), list(Constants.ENDING_OUTDIR.iterdir())))
+                    list(
+                        filter(
+                            lambda x: not x.name.endswith(".gitignore"),
+                            list(Constants.ENDING_OUTDIR.iterdir()),
+                        )
+                    )
                 )
                 voice_client.play(
                     FFmpegOpusAudio(str(ending_audio)),
@@ -431,7 +465,9 @@ class SongQueue:
             self.last_processed.state = State.Processing
             self.loop.create_task(self.process_song(self.last_processed))
 
-        while self.last_played.state == State.Done and self.last_played.next is not None:
+        while (
+            self.last_played.state == State.Done and self.last_played.next is not None
+        ):
             self.last_played = self.last_played.next
 
         voice_client = self.get_voice_client()
@@ -445,70 +481,80 @@ class SongQueue:
                 if response.success:
                     assert to_play.channel is not None
                     if len(to_play.proc_request.title) > 0:
-                        self.loop.create_task(to_play.channel.send(f'Now playing: "{to_play.proc_request.title}"'))
+                        self.loop.create_task(
+                            to_play.channel.send(
+                                f'Now playing: "{to_play.proc_request.title}"'
+                            )
+                        )
 
                     def after(exception):
                         del exception
                         to_play.state = State.Done
                         self.validate()
 
-                    voice_client.play(discord.FFmpegOpusAudio(str(response.path)), after=after)
+                    voice_client.play(
+                        discord.FFmpegOpusAudio(str(response.path)), after=after
+                    )
                 else:
                     assert to_play.channel is not None
-                    self.loop.create_task(to_play.channel.send(f"Error: ```{response.message}```"))
+                    self.loop.create_task(
+                        to_play.channel.send(f"Error: ```{response.message}```")
+                    )
             elif self.last_played.state == State.Done:
-                if self.is_auto:
-                    assert self.current_context is not None
-                    try:
-                        random_song_path = random.choice(
-                            list(
-                                filter(
-                                    lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("_mod.mp4")),
-                                    list(Constants.SONGDIR.iterdir()),
-                                )
-                            )
-                        )
-                        req = ProcRequest(
-                            query=str(random_song_path.stem.removeprefix("_mod")),
-                            title="",
-                            path=random_song_path,
-                            semitone=0,
-                            speed=1,
-                            skip_tts=True,
-                            is_auto=True,
-                        )
-                        channel = self.current_context.channel
-                        self.put(req, channel)
-                        return
-                    except Exception as e:
-                        print(list(Constants.SONGDIR.iterdir()))
-                        print("No song found")
-
                 if not self.queue_empty_played:
-                    try:
-                        empty_audio = random.choice(
-                            list(
-                                filter(
-                                    lambda x: not x.name.endswith(".gitignore"),
-                                    list(Constants.EMPTY_OUTDIR.iterdir()),
+                    if self.is_auto:
+                        assert self.current_context is not None
+                        try:
+                            random_song_path = random.choice(
+                                list(
+                                    filter(
+                                        lambda x: (not x.name.endswith(".gitignore"))
+                                        and (x.name.endswith("_mod.mp4")),
+                                        list(Constants.SONGDIR.iterdir()),
+                                    )
                                 )
                             )
-                        )
-                    except IndexError:
-                        gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
-                    finally:
-                        empty_audio = random.choice(
-                            list(
-                                filter(
-                                    lambda x: not x.name.endswith(".gitignore"),
-                                    list(Constants.EMPTY_OUTDIR.iterdir()),
+                            req = ProcRequest(
+                                query=str(random_song_path.stem.removesuffix("_mod")),
+                                title="",
+                                path=random_song_path,
+                                semitone=0,
+                                speed=1,
+                                skip_tts=True,
+                                is_auto=True,
+                            )
+                            channel = self.current_context.channel
+                            self.put(req, channel)
+                        except Exception as e:
+                            print(list(Constants.SONGDIR.iterdir()))
+                            print("No song found")
+                    else:
+                        try:
+                            empty_audio = random.choice(
+                                list(
+                                    filter(
+                                        lambda x: not x.name.endswith(".gitignore"),
+                                        list(Constants.EMPTY_OUTDIR.iterdir()),
+                                    )
                                 )
                             )
-                        )
-                        voice_client.play(
-                            FFmpegOpusAudio(str(empty_audio)),
-                            after=lambda x: self.validate(),
-                        )
+                        except IndexError:
+                            gen_tts_constants(
+                                Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR
+                            )
+                        finally:
+                            empty_audio = random.choice(
+                                list(
+                                    filter(
+                                        lambda x: not x.name.endswith(".gitignore"),
+                                        list(Constants.EMPTY_OUTDIR.iterdir()),
+                                    )
+                                )
+                            )
+                            voice_client.play(
+                                FFmpegOpusAudio(str(empty_audio)),
+                                after=lambda x: self.validate(),
+                            )
                     self.queue_empty_played = True
 
 
