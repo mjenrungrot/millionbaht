@@ -463,54 +463,53 @@ class SongQueue:
                         random_song_path = random.choice(
                             list(
                                 filter(
-                                    lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("._mod.mp4")),
+                                    lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("_mod.mp4")),
                                     list(Constants.SONGDIR.iterdir()),
                                 )
                             )
                         )
-                    except IndexError:
+                        req = ProcRequest(
+                            query=str(random_song_path.stem.removeprefix("_mod")),
+                            title="",
+                            path=random_song_path,
+                            semitone=0,
+                            speed=1,
+                            skip_tts=True,
+                            is_auto=True,
+                        )
+                        channel = self.current_context.channel
+                        self.put(req, channel)
+                        return
+                    except Exception as e:
                         print(list(Constants.SONGDIR.iterdir()))
                         print("No song found")
-                        return
 
-                    req = ProcRequest(
-                        query=str(random_song_path.stem.removeprefix("._mod")),
-                        title="",
-                        path=random_song_path,
-                        semitone=0,
-                        speed=1,
-                        skip_tts=True,
-                        is_auto=True,
-                    )
-                    channel = self.current_context.channel
-                    self.put(req, channel)
-                else:
-                    if not self.queue_empty_played:
-                        try:
-                            empty_audio = random.choice(
-                                list(
-                                    filter(
-                                        lambda x: not x.name.endswith(".gitignore"),
-                                        list(Constants.EMPTY_OUTDIR.iterdir()),
-                                    )
+                if not self.queue_empty_played:
+                    try:
+                        empty_audio = random.choice(
+                            list(
+                                filter(
+                                    lambda x: not x.name.endswith(".gitignore"),
+                                    list(Constants.EMPTY_OUTDIR.iterdir()),
                                 )
                             )
-                        except IndexError:
-                            gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
-                        finally:
-                            empty_audio = random.choice(
-                                list(
-                                    filter(
-                                        lambda x: not x.name.endswith(".gitignore"),
-                                        list(Constants.EMPTY_OUTDIR.iterdir()),
-                                    )
+                        )
+                    except IndexError:
+                        gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
+                    finally:
+                        empty_audio = random.choice(
+                            list(
+                                filter(
+                                    lambda x: not x.name.endswith(".gitignore"),
+                                    list(Constants.EMPTY_OUTDIR.iterdir()),
                                 )
                             )
-                            voice_client.play(
-                                FFmpegOpusAudio(str(empty_audio)),
-                                after=lambda x: self.validate(),
-                            )
-                        self.queue_empty_played = True
+                        )
+                        voice_client.play(
+                            FFmpegOpusAudio(str(empty_audio)),
+                            after=lambda x: self.validate(),
+                        )
+                    self.queue_empty_played = True
 
 
 def get_ydl() -> yt_dlp.YoutubeDL:
