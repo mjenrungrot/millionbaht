@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from io import BytesIO
 import os
 import subprocess as sp
 from typing import Any, Literal, Optional, Union
@@ -9,6 +10,7 @@ from discord import VoiceClient, VoiceState
 from discord.ext import commands
 from dotenv import load_dotenv
 from litellm import acompletion
+import requests
 
 
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl
@@ -20,12 +22,16 @@ TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
+    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
+).lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
     "1",
 )
+CF_API_TOKEN = os.environ["CLOUDFLARE_API_KEY"]
+CF_ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
 
 try:
     COLOR = int(os.getenv("BOT_COLOR", "ff0000"), 16)
@@ -37,7 +43,9 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
+    intents=discord.Intents(
+        voice_states=True, guilds=True, guild_messages=True, message_content=True
+    ),
 )
 
 
@@ -116,7 +124,8 @@ async def llm_code(ctx: commands.Context, *args: str):
             if len(outputs) > 1 and "\n" in outputs:
                 outputs = "".join(outputs)
                 outputs.replace("\n", "")
-                await ctx.send((outputs))
+                embed = discord.Embed(title="Code", description=outputs, color=COLOR)
+                await ctx.send(embed=embed)
                 outputs = ""
         if len(outputs) > 0:
             embed = discord.Embed(title="Code", description=outputs, color=COLOR)
@@ -143,7 +152,8 @@ async def llm_chat(ctx: commands.Context, *args: str):
             if len(outputs) > 1 and "\n" in outputs:
                 outputs = "".join(outputs)
                 outputs.replace("\n", "")
-                await ctx.send((outputs))
+                embed = discord.Embed(title="Chat", description=outputs, color=COLOR)
+                await ctx.send(embed=embed)
                 outputs = ""
         if len(outputs) > 0:
             embed = discord.Embed(title="Chat", description=outputs, color=COLOR)
@@ -151,6 +161,27 @@ async def llm_chat(ctx: commands.Context, *args: str):
     except Exception as e:
         await send_error(ctx, e)
         return
+
+
+@BOT.command(name="roop")
+async def roop(ctx: commands.Context, *args: str):
+    headers = {
+        "Authorization": f"Bearer {CF_API_TOKEN}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    req = parse_request(args)
+    query = req.query
+    data = {"prompt": {query}}
+
+    response = requests.post(
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        headers=headers,
+        data=str(data),
+    )
+    f = BytesIO(response.content)
+    picture = discord.File(f)
+    await ctx.send(file=picture)
 
 
 @BOT.command(name="skip", brief="Skip a song")
