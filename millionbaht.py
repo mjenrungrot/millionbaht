@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from ast import Constant
 from io import BytesIO
 import os
 import subprocess as sp
@@ -15,7 +16,8 @@ import requests
 import asyncio
 
 
-from millionbaht.handler import ProcRequest, SongQueue, get_ydl
+from millionbaht.constants import Constants
+from millionbaht.handler import ProcRequest, SongQueue, get_ydl, State
 
 
 # Load Env
@@ -103,6 +105,32 @@ async def play(ctx: commands.Context, *args: str):
     req.title = info["title"]
     await ctx.send(f"Adding: https://youtu.be/{req.query}")
     queue.put(req, ctx.channel)
+
+
+@BOT.command(name="remove", brief="Remove current song from the database")
+async def remove(ctx: commands.Context):
+    if not usr_in_same_voice_room(ctx):
+        await ctx.send("You have to be in the same voice channel as the bot")
+        return
+    queue = get_queue(ctx)
+    if queue.last_played.state == State.Playing:
+        try:
+            assert queue.last_played.proc_response is not None
+            query = queue.last_played.proc_response.path
+            queue.skip(1)
+            stem = query.stem.removesuffix("_mod")
+            files_to_remove = []
+            for file in Constants.SONGDIR.iterdir():
+                if stem in file.stem:
+                    files_to_remove.append(file)
+
+            for file in files_to_remove:
+                embed = discord.Embed(description=f"Removed {file} from the database", color=COLOR)
+                await ctx.send(embed=embed)
+                file.unlink()
+
+        except Exception as e:
+            print("[remove] Error: ", e)
 
 
 @BOT.command(name="code", brief="Prompt with codellama-7b-instruct-awq")
@@ -244,8 +272,8 @@ async def update(ctx: commands.Context, *args):
         return
     await ctx.send("Updating...")
     command = ["git", "pull"]
-    output = sp.check_output(command)
-    embed = discord.Embed(title="Update", description=output.decode("utf-8"), color=COLOR)
+    output = sp.check_output(command, stderr=sp.STDOUT)
+    embed = discord.Embed(description=output.decode("utf-8"), color=COLOR)
     await ctx.send(embed=embed)
 
 
