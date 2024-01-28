@@ -85,7 +85,11 @@ def _transform_title(
     # preprocess message
     message = f"{message_prefix}{title}"
     message = message.lower()
+    message = message.replace("official music video", "")
     message = message.replace("official mv", "")
+    message = message.replace("official m/v", "")
+    message = message.replace("official audio", "")
+    message = message.replace("music video", "")
 
     audio_fd = BytesIO()
     gTTS(message, lang="th").write_to_fp(audio_fd)
