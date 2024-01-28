@@ -119,7 +119,8 @@ async def llm_code(ctx: commands.Context, *args: str):
                 await ctx.send((outputs))
                 outputs = ""
         if len(outputs) > 0:
-            await ctx.send((outputs))
+            embed = discord.Embed(title="Code", description=outputs, color=COLOR)
+            await ctx.send(embed=embed)
     except Exception as e:
         await send_error(ctx, e)
         return
@@ -145,7 +146,8 @@ async def llm_chat(ctx: commands.Context, *args: str):
                 await ctx.send((outputs))
                 outputs = ""
         if len(outputs) > 0:
-            await ctx.send((outputs))
+            embed = discord.Embed(title="Chat", description=outputs, color=COLOR)
+            await ctx.send(embed=embed)
     except Exception as e:
         await send_error(ctx, e)
         return
