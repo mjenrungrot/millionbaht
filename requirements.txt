@@ -12,3 +12,4 @@ typeguard
 pydantic
 litellm
 langdetect
+pythainlp
