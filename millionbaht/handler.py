@@ -459,14 +459,19 @@ class SongQueue:
             elif self.last_played.state == State.Done:
                 if self.is_auto:
                     assert self.current_context is not None
-                    random_song_path = random.choice(
-                        list(
-                            filter(
-                                lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("._mod.mp4")),
-                                list(Constants.SONGDIR.iterdir()),
+                    try:
+                        random_song_path = random.choice(
+                            list(
+                                filter(
+                                    lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("._mod.mp4")),
+                                    list(Constants.SONGDIR.iterdir()),
+                                )
                             )
                         )
-                    )
+                    except IndexError:
+                        print(list(Constants.SONGDIR.iterdir()))
+                        print("No song found")
+                        return
 
                     req = ProcRequest(
                         query=str(random_song_path.stem.removeprefix("._mod")),
