@@ -180,8 +180,11 @@ async def roop(ctx: commands.Context, *args: str):
         data=str(data),
     )
     f = BytesIO(response.content)
-    picture = discord.File(f)
-    await ctx.send(file=picture)
+    filename = f"sdxl-{query}.png"
+    picture = discord.File(f, filename=filename)
+    embed = discord.Embed()
+    embed.set_image(url=f"attachment://{filename}")
+    await ctx.send(file=picture, embed=embed)
 
 
 @BOT.command(name="skip", brief="Skip a song")
