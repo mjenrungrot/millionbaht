@@ -20,7 +20,9 @@ TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
+    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
+).lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
@@ -37,7 +39,9 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
+    intents=discord.Intents(
+        voice_states=True, guilds=True, guild_messages=True, message_content=True
+    ),
 )
 
 
@@ -98,25 +102,27 @@ async def play(ctx: commands.Context, *args: str):
     await ctx.send(f"Adding: https://youtu.be/{req.query}")
     queue.put(req, ctx.channel)
 
-@BOT.command(name="llm")
+
+@BOT.command(name="tarm")
 async def ask_llm(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
         query = req.query
         assert isinstance(query, str)
         response = completion(
-                model="cloudflare/@hf/thebloke/codellama-7b-instruct-awq", 
-                messages=[
-                {"role": "user", "content": query}
-            ],
-                stream=True
-            )
+            model="cloudflare/@hf/thebloke/codellama-7b-instruct-awq",
+            messages=[{"role": "user", "content": query}],
+            stream=True,
+        )
+        outputs = []
         for chunk in response:
-            await ctx.send(chunk)
+            outputs.append(chunk["choices"][0]["delta"]["content"])
+            if len(outputs) > 10:
+                await ctx.send("".join(outputs))
+                outputs = list()
     except Exception as e:
         await send_error(ctx, e)
         return
-
 
 
 @BOT.command(name="skip")
