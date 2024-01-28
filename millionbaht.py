@@ -104,7 +104,7 @@ async def play(ctx: commands.Context, *args: str):
 
 
 @BOT.command(name="code")
-async def ask_llm(ctx: commands.Context, *args: str):
+async def llm_code(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
         query = req.query
@@ -126,7 +126,7 @@ async def ask_llm(ctx: commands.Context, *args: str):
 
 
 @BOT.command(name="chat")
-async def ask_llm(ctx: commands.Context, *args: str):
+async def llm_chat(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
         query = req.query
