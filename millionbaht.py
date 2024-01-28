@@ -114,12 +114,14 @@ async def llm_code(ctx: commands.Context, *args: str):
             messages=[{"role": "user", "content": query}],
             stream=True,
         )
-        outputs = []
+        outputs = ""
         async for chunk in response:
-            outputs.append(chunk["choices"][0]["delta"]["content"])
-            if len(outputs) > 10:
-                await ctx.send("".join(outputs))
-                outputs = list()
+            outputs += str(chunk["choices"][0]["delta"]["content"])
+            if "\n" in outputs:
+                outputs = "".join(outputs)
+                outputs.replace("\n", "")
+                await ctx.send((outputs))
+                outputs = ""
     except Exception as e:
         await send_error(ctx, e)
         return
@@ -136,12 +138,14 @@ async def llm_chat(ctx: commands.Context, *args: str):
             messages=[{"role": "user", "content": query}],
             stream=True,
         )
-        outputs = []
+        outputs = ""
         async for chunk in response:
-            outputs.append(chunk["choices"][0]["delta"]["content"])
-            if len(outputs) > 10:
-                await ctx.send("".join(outputs))
-                outputs = list()
+            outputs += str(chunk["choices"][0]["delta"]["content"])
+            if "\n" in outputs:
+                outputs = "".join(outputs)
+                outputs.replace("\n", "")
+                await ctx.send((outputs))
+                outputs = ""
     except Exception as e:
         await send_error(ctx, e)
         return
