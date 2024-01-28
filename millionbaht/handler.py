@@ -269,9 +269,6 @@ def process_song(req: ProcRequest) -> ProcResponse:
         return response
 
 
-pool = ProcessPoolExecutor(1)
-
-
 #################
 
 

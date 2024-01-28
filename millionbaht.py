@@ -4,6 +4,7 @@ import os
 import subprocess as sp
 from typing import Any, Literal, Optional, Union
 
+import json
 import discord
 import yt_dlp
 from discord import VoiceClient, VoiceState
@@ -23,9 +24,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 PREFIX = os.getenv("BOT_PREFIX", ".")
 YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv(
-    "BOT_REPORT_COMMAND_NOT_FOUND", "1"
-).lower() in ("true", "t", "1")
+BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
 BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
     "true",
     "t",
@@ -44,9 +43,7 @@ except ValueError:
 
 BOT = commands.Bot(
     command_prefix=PREFIX,
-    intents=discord.Intents(
-        voice_states=True, guilds=True, guild_messages=True, message_content=True
-    ),
+    intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
 )
 
 
@@ -164,7 +161,7 @@ async def llm_chat(ctx: commands.Context, *args: str):
         return
 
 
-@BOT.command(name="roop")
+@BOT.command(name="roop", brief="Prompt with stable-diffusion-xl-base-1.0")
 async def roop(ctx: commands.Context, *args: str):
     headers = {
         "Authorization": f"Bearer {CF_API_TOKEN}",
@@ -173,14 +170,15 @@ async def roop(ctx: commands.Context, *args: str):
 
     req = parse_request(args)
     query = req.query
-    data = {"prompt": {query}}
+    data = json.dumps({"prompt": query})
 
     response = await asyncio.to_thread(
         requests.post,
         f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0",
         headers=headers,
-        data=str(data),
+        data=data,
     )
+
     f = BytesIO(response.content)
     f.seek(0)
     filename = f"sdxl-{query}.png"
