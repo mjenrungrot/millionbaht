@@ -103,7 +103,7 @@ async def play(ctx: commands.Context, *args: str):
     queue.put(req, ctx.channel)
 
 
-@BOT.command(name="tarm")
+@BOT.command(name="code")
 async def ask_llm(ctx: commands.Context, *args: str):
     try:
         req = parse_request(args)
@@ -111,6 +111,28 @@ async def ask_llm(ctx: commands.Context, *args: str):
         assert isinstance(query, str)
         response = await acompletion(
             model="cloudflare/@hf/thebloke/codellama-7b-instruct-awq",
+            messages=[{"role": "user", "content": query}],
+            stream=True,
+        )
+        outputs = []
+        async for chunk in response:
+            outputs.append(chunk["choices"][0]["delta"]["content"])
+            if len(outputs) > 10:
+                await ctx.send("".join(outputs))
+                outputs = list()
+    except Exception as e:
+        await send_error(ctx, e)
+        return
+
+
+@BOT.command(name="chat")
+async def ask_llm(ctx: commands.Context, *args: str):
+    try:
+        req = parse_request(args)
+        query = req.query
+        assert isinstance(query, str)
+        response = await acompletion(
+            model="cloudflare/@cf/meta/llama-2-7b-chat-fp16",
             messages=[{"role": "user", "content": query}],
             stream=True,
         )
