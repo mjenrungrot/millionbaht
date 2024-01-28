@@ -11,6 +11,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from litellm import acompletion
 import requests
+import asyncio
 
 
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl
@@ -174,12 +175,14 @@ async def roop(ctx: commands.Context, *args: str):
     query = req.query
     data = {"prompt": {query}}
 
-    response = requests.post(
+    response = await asyncio.to_thread(
+        requests.post,
         f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0",
         headers=headers,
         data=str(data),
     )
     f = BytesIO(response.content)
+    f.seek(0)
     filename = f"sdxl-{query}.png"
     picture = discord.File(f, filename=filename)
     embed = discord.Embed()
