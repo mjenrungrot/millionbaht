@@ -5,7 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional, Literal, cast
 import traceback
 from io import BytesIO
 import discord
@@ -16,6 +16,7 @@ from discord.ext import commands
 from pydantic import BaseModel, ConfigDict
 import torchaudio
 from gtts import gTTS
+import math
 
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel, YoutubeEntry
@@ -103,40 +104,31 @@ def _transform_strip(
     orig_freq: int,
     threshold_sec_left: float = 30.0,
     threshold_sec_right: float = 30.0,
-    buffer_left_sec: float = 2.0,
-    buffer_right_sec: float = 2.0,
-    pitch_threshold: float = 700.0,
-    pitch_duration: int = 100,
+    buffer_left_sec: float = 3.0,
+    buffer_right_sec: float = 3.0,
+    db_threshold: float = -24,
+    db_sec: float = 0.2,
 ) -> tuple[torch.Tensor, int]:
-    # find the first frame such that the pitch is below the threshold for at least pitch_duration frames
+    # find the first frame such that the loudness is above the db_threshold for at least db_sec
+    N = audio.shape[-1]
+    n_frame_left = min(round(threshold_sec_left * orig_freq), N // 2)
+    n_frame_right = min(round(threshold_sec_right * orig_freq), N // 2)
+    db_frames = min(round(db_sec * orig_freq), N // 2)
+    buff_left = round(buffer_left_sec * orig_freq)
+    buff_right = round(buffer_right_sec * orig_freq)
+    hop = db_frames // 2
 
     logger.info(f"_transform_strip Input: {audio.shape}")
 
-    # LEFT
-    considered_length = max(audio.shape[-1], orig_freq * threshold_sec_left)
-    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., :considered_length], orig_freq)
-    t_axis = torch.linspace(0, considered_length, pitch.shape[-1])
-    is_singing = pitch < pitch_threshold
-    for i, t in enumerate(t_axis):
-        left = i
-        right = min(pitch.shape[-1], i + pitch_duration)
-        if is_singing[..., left:right].all():
-            audio = audio[..., round((t_axis[i] + buffer_left_sec / orig_freq).item()) :]
-            break
-    logger.info(f"_transform_strip Output: {audio.shape}")
+    x = audio.reshape(-1, N).mean(dim=-2)
+    x = x.unfold(-1, db_frames, hop)
+    db = ((x.max(dim=-1).values - x.min(dim=-1).values) / math.sqrt(8)).log10() * 20
+    left_blk = next(x[0] for x in enumerate(db) if x[1] > db_threshold)
+    right_blk = db.shape[0] - next(x[0] for x in enumerate(reversed(db)) if x[1] > db_threshold)
+    left_i = max(min(left_blk * hop - buff_left, n_frame_left), 0)
+    right_i = min(max(right_blk * hop + buff_right, N - n_frame_right), N)
 
-    # RIGHT
-    considered_length = max(audio.shape[-1], orig_freq * threshold_sec_right)
-    pitch = torchaudio.functional.detect_pitch_frequency(audio[..., -considered_length:], orig_freq)
-    t_axis = torch.linspace(audio.shape[-1] - considered_length, audio.shape[-1], pitch.shape[-1])
-    is_singing = pitch < pitch_threshold
-    for i in range(pitch.shape[-1] - pitch_duration, -1, -1):
-        t = t_axis[i]
-        left = i
-        right = i + pitch_duration
-        if is_singing[..., left:right].all():
-            audio = audio[..., : round((t_axis[i] + buffer_right_sec / orig_freq).item())]
-            break
+    audio = audio[..., left_i:right_i]
     logger.info(f"_transform_strip Output: {audio.shape}")
     return audio, orig_freq
 
@@ -174,7 +166,7 @@ def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) ->
 def _transform_volume(
     audio: torch.Tensor,
     orig_freq: int,
-    target_db: float = 0.0,
+    target_db: float = -20,
 ) -> tuple[torch.Tensor, int]:
     logger.info(f"_transform_volume Input: {audio.shape}")
     loudness = torchaudio.functional.loudness(audio, orig_freq).item()
@@ -194,7 +186,7 @@ def _transform_fade(
     logger.info(f"_transform_fade Input: {audio.shape}")
     fade_in = torch.linspace(0, 1, int(fade_in_sec * orig_freq))
     ones_in = torch.ones(audio.shape[-1] - len(fade_in))
-    fade_out = torch.linspace(0, 1, int(fade_out_sec * orig_freq))
+    fade_out = torch.linspace(1, 0, int(fade_out_sec * orig_freq))
     ones_out = torch.ones(audio.shape[-1] - len(fade_out))
     if fade_shape == "exponential":
         fade_in = torch.pow(2, (fade_in - 1)) * fade_in
@@ -210,12 +202,14 @@ def _transform_fade(
 def transform_song(path: Path, req: ProcRequest, outpath: Path) -> Path:
     logger.info(f"start transform_song: {req} -> {outpath}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
+    x = cast(torch.Tensor, x)
+    rate = cast(int, rate)
+    x, rate = _transform_volume(x, rate)
     if not req.fast:
         x, rate = _transform_strip(x, rate)
     x, rate = _transform_speed(x, rate, req.speed)
     if not req.fast:
         x, rate = _transform_semitone(x, rate, req.semitone)
-    x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
     x, rate = _transform_title(x, rate, req.title)
     torchaudio.save(outpath, x, rate)  # type: ignore
@@ -450,11 +444,7 @@ class SongQueue:
                                 k, v = kw.split(":")
                                 kwdict[k] = v
                             info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{id}.json").read_text())
-                            req = ProcRequest(
-                                query=info.id,
-                                title=info.title,
-                                **kwdict
-                            )
+                            req = ProcRequest(query=info.id, title=info.title, **kwdict)
                             channel = self.current_context.channel
                             logger.info(f"Before {self.get_queue()=}")
                             self.put(req, channel)
