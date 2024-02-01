@@ -196,7 +196,7 @@ def _transform_semitone(audio: torch.Tensor, orig_freq: int, semitone: float) ->
         bins_per_octave=12,
     )
     logger.info(f"_transform_semitone: {semitone} Output: {out.shape}")
-    return audio, orig_freq
+    return out, orig_freq
 
 
 def _transform_volume(
