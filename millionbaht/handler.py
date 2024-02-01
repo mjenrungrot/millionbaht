@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 import torchaudio
 from gtts import gTTS
 import math
+import icu
 
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel, YoutubeEntry
@@ -61,6 +62,33 @@ _DUMMY_PROC_REQUEST = ProcRequest(query="")
 _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
 
 
+_LANGS = ["en", "th", "ko", "zh", "ja"]
+_CHARSETS = [
+    set(icu.LocaleData(lang).getExemplarSet(icu.USET_ADD_CASE_MAPPINGS, icu.ULocaleDataExemplarSetType.ES_STANDARD))  # type: ignore
+    for lang in _LANGS
+]
+
+
+def _split_lang(s: str) -> list[tuple[str, str]]:
+    res: list[tuple[str, str]] = []
+    last_lang = "unk"
+    stk = ""
+    for c in s:
+        cur_lang = "unk"
+        for lang, charset in zip(_LANGS, _CHARSETS):
+            if c in charset:
+                cur_lang = lang
+                break
+        if cur_lang == "unk" or cur_lang == last_lang:
+            stk += c
+        else:
+            res.append((last_lang if last_lang != "unk" else "en", stk.strip()))
+            last_lang = cur_lang
+            stk = c
+    res.append((last_lang if last_lang != "unk" else "en", stk.strip()))
+    return res[1:]
+
+
 def _transform_title(
     audio: torch.Tensor,
     orig_freq: int,
@@ -85,14 +113,18 @@ def _transform_title(
     message = message.replace("official audio", "")
     message = message.replace("music video", "")
 
-    audio_fd = BytesIO()
-    gTTS(message, lang="th").write_to_fp(audio_fd)
-    audio_fd.seek(0)
-
-    audio_tts, tts_rate = torchaudio.load(audio_fd, format="mp3")  # type: ignore
-    audio_fd.close()
-    if force_tts or audio_tts.shape[-1] / tts_rate < max_duration:
+    ttss = []
+    for lang, word in _split_lang(message):
+        audio_fd = BytesIO()
+        gTTS(word, lang=lang).write_to_fp(audio_fd)
+        audio_fd.seek(0)
+        audio_tts, tts_rate = torchaudio.load(audio_fd, format="mp3")  # type: ignore
+        audio_fd.close()
         audio_tts = torchaudio.functional.resample(audio_tts, tts_rate, orig_freq)
+        ttss.append(audio_tts)
+    audio_tts = torch.cat(ttss, dim=-1)
+
+    if force_tts or audio_tts.shape[-1] / orig_freq < max_duration:
         if audio_tts.shape[0] != audio.shape[0]:
             audio_tts = audio_tts.repeat(audio.shape[0], 1)
         out = torch.cat([audio_tts, audio], dim=-1)
