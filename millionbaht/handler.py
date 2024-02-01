@@ -245,10 +245,11 @@ def transform_song(path: Path, req: ProcRequest, outpath: Path) -> Path:
     if not req.fast:
         x, rate = _transform_semitone(x, rate, req.semitone)
     x, rate = _transform_fade(x, rate)
-    x, rate = _transform_title(x, rate, req.title)
+    x, rate = _transform_title(x, rate, req.title, force_tts=req.force_tts)
     torchaudio.save(outpath, x, rate)  # type: ignore
     logger.info(f"end transform_song: {req} -> {outpath}")
     return outpath
+
 
 def _get_mod_name(req: ProcRequest) -> str:
     mod_name = req.query
@@ -258,6 +259,7 @@ def _get_mod_name(req: ProcRequest) -> str:
             mod_name += f"--{k}:{v}"
     mod_name += f".mod.m4a"
     return mod_name
+
 
 # runs on a different process
 def process_song(req: ProcRequest) -> ProcResponse:
