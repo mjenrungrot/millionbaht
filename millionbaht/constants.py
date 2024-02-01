@@ -60,15 +60,15 @@ class Constants:
 
 def gen_tts_constants(statements: list[str], outdir: Path) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
-    for i, statement in enumerate(statements):
-        del i
+    for statement in statements:
         hash_statement = hash(statement)
-        gTTS(statement, lang="th").save(outdir / f"{hash_statement}.wav")
+        file = outdir / f"tts_{hash_statement}.wav"
+        if not file.exists():
+            gTTS(statement, lang="th").save(file)
 
 
 Constants.SONGDIR.mkdir(parents=True, exist_ok=True)
 
 
 for statements, outdir in Constants.ALL_STATEMENTS:
-    if not outdir.exists() or len(list(outdir.iterdir())) != len(statements):
-        gen_tts_constants(statements, outdir)
+    gen_tts_constants(statements, outdir)
