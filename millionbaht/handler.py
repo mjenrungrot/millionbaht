@@ -250,17 +250,19 @@ def transform_song(path: Path, req: ProcRequest, outpath: Path) -> Path:
     logger.info(f"end transform_song: {req} -> {outpath}")
     return outpath
 
-
-# runs on a different process
-def process_song(req: ProcRequest) -> ProcResponse:
-    info_path = Constants.SONGDIR / f"{req.query}.json"
-    mod_name = "mod__" + req.query
+def _get_mod_name(req: ProcRequest) -> str:
+    mod_name = req.query
     for k in req.model_fields.keys():
         v = getattr(req, k)
         if k not in ("query", "title") and v != getattr(_DUMMY_PROC_REQUEST, k):
             mod_name += f"--{k}:{v}"
-    mod_name += f".mp3"
-    mod_path = Constants.SONGDIR / mod_name
+    mod_name += f".mod.m4a"
+    return mod_name
+
+# runs on a different process
+def process_song(req: ProcRequest) -> ProcResponse:
+    info_path = Constants.SONGDIR / f"{req.query}.json"
+    mod_path = Constants.SONGDIR / _get_mod_name(req)
     if not info_path.exists():
         ydl = get_ydl()
         try:
@@ -469,15 +471,14 @@ class SongQueue:
                         assert self.current_context is not None
                         try:
                             random_song_path = random.choice(
-                                list(filter(lambda x: x.stem.startswith("mod__"), Constants.SONGDIR.iterdir()))
+                                list(filter(lambda x: x.stem.endswith(".mod"), Constants.SONGDIR.iterdir()))
                             )
-                            sid, *kws = random_song_path.stem.split("--")
-                            id = "__".join(sid.split("__")[1:])
+                            sid, *kws = random_song_path.stem.split(".")[0].split("--")
                             kwdict = {}
                             for kw in kws:
                                 k, v = kw.split(":")
                                 kwdict[k] = v
-                            info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{id}.json").read_text())
+                            info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{sid}.json").read_text())
                             req = ProcRequest(query=info.id, title=info.title, **kwdict)
                             channel = self.current_context.channel
                             logger.info(f"Before {self.get_queue()=}")
