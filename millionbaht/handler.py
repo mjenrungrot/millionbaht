@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import re
 from typing import Optional, Literal, cast
 import traceback
 from io import BytesIO
@@ -77,6 +78,7 @@ def _transform_title(
     # preprocess message
     message = f"{message_prefix}{title}"
     message = message.lower()
+    message = re.sub("([\(\[]).*?([\)\]])", "\g<1>\g<2>", message)
     message = message.replace("official music video", "")
     message = message.replace("official mv", "")
     message = message.replace("official m/v", "")
