@@ -9,6 +9,7 @@ import re
 from typing import Optional, Literal, cast
 import traceback
 from io import BytesIO
+import unicodedata
 import discord
 import torch
 import yt_dlp
@@ -70,6 +71,7 @@ _CHARSETS = [
 
 
 def _split_lang(s: str) -> list[tuple[str, str]]:
+    s = unicodedata.normalize("NFC", s)
     res: list[tuple[str, str]] = []
     last_lang = "unk"
     stk = ""
