@@ -13,3 +13,4 @@ pydantic
 litellm
 langdetect
 pythainlp
+pyicu
