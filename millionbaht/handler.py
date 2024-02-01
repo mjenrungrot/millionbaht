@@ -6,22 +6,19 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Literal
-
+import traceback
 from io import BytesIO
 import discord
 import torch
 import yt_dlp
 from discord import FFmpegOpusAudio, VoiceClient
 from discord.ext import commands
-from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 import torchaudio
 from gtts import gTTS
 
-from millionbaht import gen_tts_constants
 from millionbaht.constants import Constants
-from millionbaht.typedef import MessageableChannel
-from millionbaht.gen_tts_constants import gen_tts_constants
+from millionbaht.typedef import MessageableChannel, YoutubeEntry
 
 
 logging.basicConfig(format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO)
@@ -32,14 +29,10 @@ class ProcRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str
     title: str = ""
-    path: Optional[Path] = None
     semitone: float = 0
     speed: float = 1
     fast: bool = False
     force_tts: bool = False
-    skip_tts: bool = False
-    ## Internal
-    is_auto: bool = False
 
 
 class ProcResponse(BaseModel):
@@ -50,10 +43,11 @@ class ProcResponse(BaseModel):
 
     @classmethod
     def fail(cls, err: Exception) -> "ProcResponse":
+        print(traceback.format_exc())
         return ProcResponse(
             success=False,
             path=Path(),
-            message=f"{type(err)}: {str(err)}",
+            message=f"{type(err).__name__}: {str(err)}",
         )
 
     @classmethod
@@ -63,9 +57,6 @@ class ProcResponse(BaseModel):
 
 _DUMMY_PROC_REQUEST = ProcRequest(query="")
 _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
-
-load_dotenv()
-_YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
 
 
 def _transform_title(
@@ -216,10 +207,8 @@ def _transform_fade(
     return output, orig_freq
 
 
-def transform_song(path: Path, req: ProcRequest) -> Path:
-    new_path = path.parent / f"{path.stem}_mod{path.suffix}"
-
-    logger.info(f"start transform_song: {req} -> {new_path}")
+def transform_song(path: Path, req: ProcRequest, outpath: Path) -> Path:
+    logger.info(f"start transform_song: {req} -> {outpath}")
     x, rate = torchaudio.load(path, normalize=True)  # type: ignore
     if not req.fast:
         x, rate = _transform_strip(x, rate)
@@ -228,17 +217,23 @@ def transform_song(path: Path, req: ProcRequest) -> Path:
         x, rate = _transform_semitone(x, rate, req.semitone)
     x, rate = _transform_volume(x, rate)
     x, rate = _transform_fade(x, rate)
-    if not req.skip_tts:
-        x, rate = _transform_title(x, rate, req.title)
-    torchaudio.save(new_path, x, rate)  # type: ignore
-    logger.info(f"end transform_song: {req} -> {new_path}")
-    return new_path
+    x, rate = _transform_title(x, rate, req.title)
+    torchaudio.save(outpath, x, rate)  # type: ignore
+    logger.info(f"end transform_song: {req} -> {outpath}")
+    return outpath
 
 
 # runs on a different process
 def process_song(req: ProcRequest) -> ProcResponse:
-    is_auto = req.is_auto
-    if not is_auto:
+    info_path = Constants.SONGDIR / f"{req.query}.json"
+    mod_name = "mod__" + req.query
+    for k in req.model_fields.keys():
+        v = getattr(req, k)
+        if k not in ("query", "title") and v != getattr(_DUMMY_PROC_REQUEST, k):
+            mod_name += f"--{k}:{v}"
+    mod_name += f".mp3"
+    mod_path = Constants.SONGDIR / mod_name
+    if not info_path.exists():
         ydl = get_ydl()
         try:
             info = ydl.extract_info(req.query, download=False)
@@ -248,29 +243,33 @@ def process_song(req: ProcRequest) -> ProcResponse:
         assert isinstance(info, dict)
         if "entries" in info:
             info = info["entries"][0]
-        assert isinstance(info, dict)
+        try:
+            info = YoutubeEntry.model_validate(info)
+            if info.is_live:
+                raise ValueError("cannot process a live video")
+        except Exception as e:
+            return ProcResponse.fail(e)
 
         try:
             ydl.download([req.query])
         except yt_dlp.utils.DownloadError as err:
             return ProcResponse.fail(err)
 
-        # only transform if not auto
-        if not req.is_auto:
-            try:
-                path = Constants.SONGDIR / f'{info["id"]}.{info["ext"]}'
-                path = transform_song(path, req)
-            except Exception as e:
-                return ProcResponse.fail(e)
-
         try:
-            return ProcResponse.ok(path, f'https://youtu.be/{info["id"]}')
+            path = Constants.SONGDIR / f"{req.query}.{info.ext}"
+            info_path.write_text(info.model_dump_json())
         except Exception as e:
             return ProcResponse.fail(e)
     else:
-        assert req.path is not None
-        response = ProcResponse.ok(req.path, f"https://youtu.be/{req.query}")
-        return response
+        info = YoutubeEntry.model_validate_json(info_path.read_text())
+        path = Constants.SONGDIR / f"{req.query}.{info.ext}"
+
+    if mod_path.exists():
+        return ProcResponse.ok(mod_path, f"https://youtu.be/{info.id}")
+    else:
+        assert path.exists()
+        path = transform_song(path, req, mod_path)
+        return ProcResponse.ok(path, f"https://youtu.be/{info.id}")
 
 
 #################
@@ -318,30 +317,11 @@ class SongQueue:
         if True:
             voice_client = self.get_voice_client()
             if voice_client is not None and not voice_client.is_playing():
-                try:
-                    opening_audio = random.choice(
-                        list(
-                            filter(
-                                lambda x: not x.name.endswith(".gitignore"),
-                                list(Constants.OPENNING_OUTDIR.iterdir()),
-                            )
-                        )
-                    )
-                except IndexError:
-                    gen_tts_constants(Constants.OPENING_STATEMENTS, Constants.OPENNING_OUTDIR)
-                finally:
-                    opening_audio = random.choice(
-                        list(
-                            filter(
-                                lambda x: not x.name.endswith(".gitignore"),
-                                list(Constants.OPENNING_OUTDIR.iterdir()),
-                            )
-                        )
-                    )
-                    voice_client.play(
-                        FFmpegOpusAudio(str(opening_audio)),
-                        after=lambda x: self.validate(),
-                    )
+                opening_audio = random.choice(list(Constants.OPENNING_OUTDIR.iterdir()))
+                voice_client.play(
+                    FFmpegOpusAudio(str(opening_audio)),
+                    after=lambda x: self.validate(),
+                )
 
     def set_is_auto_state(self, state: bool):
         self.is_auto = state
@@ -353,6 +333,7 @@ class SongQueue:
         # do non-intensive thing here
         if song.channel is not None:
             if len(song.proc_request.title) > 0:
+                print(song.proc_request.title)
                 await song.channel.send(f'Processing "{song.proc_request.title}" ...')
         song.proc_response = await self.loop.run_in_executor(pool, process_song, song.proc_request)
         song.state = State.AwaitingPlay
@@ -394,6 +375,10 @@ class SongQueue:
         return ":: empty ::"
 
     def leave(self):
+        it = self.last_played
+        while it != None:
+            it.state = State.Done
+            it = it.next
         voice_client = self.get_voice_client()
         if voice_client:
             voice_client.stop()
@@ -402,30 +387,11 @@ class SongQueue:
                 del err
                 self.loop.create_task(voice_client.disconnect())
 
-            try:
-                ending_audio = random.choice(
-                    list(
-                        filter(
-                            lambda x: not x.name.endswith(".gitignore"),
-                            list(Constants.ENDING_OUTDIR.iterdir()),
-                        )
-                    )
-                )
-            except IndexError:
-                gen_tts_constants(Constants.ENDING_STATEMENTS, Constants.ENDING_OUTDIR)
-            finally:
-                ending_audio = random.choice(
-                    list(
-                        filter(
-                            lambda x: not x.name.endswith(".gitignore"),
-                            list(Constants.ENDING_OUTDIR.iterdir()),
-                        )
-                    )
-                )
-                voice_client.play(
-                    FFmpegOpusAudio(str(ending_audio)),
-                    after=after,
-                )
+            ending_audio = random.choice(list(Constants.ENDING_OUTDIR.iterdir()))
+            voice_client.play(
+                FFmpegOpusAudio(str(ending_audio)),
+                after=after,
+            )
 
     def get_voice_client(self) -> Optional[VoiceClient]:
         for voice_client in self.bot.voice_clients:
@@ -475,21 +441,19 @@ class SongQueue:
                         assert self.current_context is not None
                         try:
                             random_song_path = random.choice(
-                                list(
-                                    filter(
-                                        lambda x: (not x.name.endswith(".gitignore")) and (x.name.endswith("_mod.mp4")),
-                                        list(Constants.SONGDIR.iterdir()),
-                                    )
-                                )
+                                list(filter(lambda x: x.stem.startswith("mod__"), Constants.SONGDIR.iterdir()))
                             )
+                            sid, *kws = random_song_path.stem.split("--")
+                            id = "__".join(sid.split("__")[1:])
+                            kwdict = {}
+                            for kw in kws:
+                                k, v = kw.split(":")
+                                kwdict[k] = v
+                            info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{id}.json").read_text())
                             req = ProcRequest(
-                                query=str(random_song_path.stem.removesuffix("_mod")),
-                                title="",
-                                path=random_song_path,
-                                semitone=0,
-                                speed=1,
-                                skip_tts=True,
-                                is_auto=True,
+                                query=info.id,
+                                title=info.title,
+                                **kwdict
                             )
                             channel = self.current_context.channel
                             logger.info(f"Before {self.get_queue()=}")
@@ -499,37 +463,18 @@ class SongQueue:
                             logger.info(f"{list(Constants.SONGDIR.iterdir())=}")
                             logger.info("No song found")
                     else:
-                        try:
-                            empty_audio = random.choice(
-                                list(
-                                    filter(
-                                        lambda x: not x.name.endswith(".gitignore"),
-                                        list(Constants.EMPTY_OUTDIR.iterdir()),
-                                    )
-                                )
-                            )
-                        except IndexError:
-                            gen_tts_constants(Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR)
-                        finally:
-                            empty_audio = random.choice(
-                                list(
-                                    filter(
-                                        lambda x: not x.name.endswith(".gitignore"),
-                                        list(Constants.EMPTY_OUTDIR.iterdir()),
-                                    )
-                                )
-                            )
-                            voice_client.play(
-                                FFmpegOpusAudio(str(empty_audio)),
-                                after=lambda x: self.validate(),
-                            )
+                        empty_audio = random.choice(list(Constants.EMPTY_OUTDIR.iterdir()))
+                        voice_client.play(
+                            FFmpegOpusAudio(str(empty_audio)),
+                            after=lambda x: self.validate(),
+                        )
                         self.queue_empty_played = True
 
 
 def get_ydl() -> yt_dlp.YoutubeDL:
     return yt_dlp.YoutubeDL(
         {
-            "format": _YTDL_FORMAT,
+            "format": Constants.YTDL_FORMAT,
             "source_address": "0.0.0.0",
             "default_search": "ytsearch",
             "outtmpl": "%(id)s.%(ext)s",

@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional, Union
 
 from discord import (
     DMChannel,
@@ -9,6 +9,14 @@ from discord import (
     Thread,
     VoiceChannel,
 )
+from pydantic import BaseModel
 
 PartialMessageableChannel = Union[TextChannel, VoiceChannel, StageChannel, Thread, DMChannel, PartialMessageable]
 MessageableChannel = Union[PartialMessageableChannel, GroupChannel]
+
+
+class YoutubeEntry(BaseModel):
+    id: str
+    title: str
+    is_live: bool
+    ext: str

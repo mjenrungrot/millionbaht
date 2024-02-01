@@ -1,6 +1,12 @@
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+from gtts import gTTS
+
 
 PROJECT_PATH = Path(__file__).parent.parent
+
+load_dotenv()
 
 
 class Constants:
@@ -37,3 +43,32 @@ class Constants:
     ]
 
     SONGDIR = PROJECT_PATH / "dl" / "songs"
+    YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    BOT_PREFIX = os.getenv("BOT_PREFIX", ".")
+    PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "1", "t")
+    BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1") in ("true", "1", "t")
+    BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
+        "true",
+        "t",
+        "1",
+    )
+    CF_API_TOKEN = os.environ["CLOUDFLARE_API_KEY"]
+    CF_ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    COLOR = int(os.getenv("BOT_COLOR", "ff0000"), 16)
+
+
+def gen_tts_constants(statements: list[str], outdir: Path) -> None:
+    outdir.mkdir(parents=True, exist_ok=True)
+    for i, statement in enumerate(statements):
+        del i
+        hash_statement = hash(statement)
+        gTTS(statement, lang="th").save(outdir / f"{hash_statement}.wav")
+
+
+Constants.SONGDIR.mkdir(parents=True, exist_ok=True)
+
+
+for statements, outdir in Constants.ALL_STATEMENTS:
+    if not outdir.exists() or len(list(outdir.iterdir())) != len(statements):
+        gen_tts_constants(statements, outdir)

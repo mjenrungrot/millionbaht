@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-from ast import Constant
 from io import BytesIO
-import os
 import subprocess as sp
 from typing import Any, Literal, Optional, Union
-
+from pathlib import Path
 import json
 import discord
 import yt_dlp
 from discord import VoiceClient, VoiceState
 from discord.ext import commands
-from dotenv import load_dotenv
 from litellm import acompletion
 import requests
 import asyncio
@@ -20,31 +17,8 @@ from millionbaht.constants import Constants
 from millionbaht.handler import ProcRequest, SongQueue, get_ydl, State
 
 
-# Load Env
-load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
-PREFIX = os.getenv("BOT_PREFIX", ".")
-YTDL_FORMAT = os.getenv("YTDL_FORMAT", "worstaudio")
-PRINT_STACK_TRACE = os.getenv("PRINT_STACK_TRACE", "1").lower() in ("true", "t", "1")
-BOT_REPORT_COMMAND_NOT_FOUND = os.getenv("BOT_REPORT_COMMAND_NOT_FOUND", "1").lower() in ("true", "t", "1")
-BOT_REPORT_DL_ERROR = os.getenv("BOT_REPORT_DL_ERROR", "0").lower() in (
-    "true",
-    "t",
-    "1",
-)
-CF_API_TOKEN = os.environ["CLOUDFLARE_API_KEY"]
-CF_ACCOUNT_ID = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-
-try:
-    COLOR = int(os.getenv("BOT_COLOR", "ff0000"), 16)
-except ValueError:
-    print("the BOT_COLOR in .env is not a valid hex color")
-    print("using default color ff0000")
-    COLOR = 0xFF0000
-
-
 BOT = commands.Bot(
-    command_prefix=PREFIX,
+    command_prefix=Constants.BOT_PREFIX,
     intents=discord.Intents(voice_states=True, guilds=True, guild_messages=True, message_content=True),
 )
 
@@ -115,17 +89,15 @@ async def remove(ctx: commands.Context):
     queue = get_queue(ctx)
     if queue.last_played.state == State.Playing:
         try:
-            assert queue.last_played.proc_response is not None
-            query = queue.last_played.proc_response.path
+            req = queue.last_played.proc_request
             queue.skip(1)
-            stem = query.stem.removesuffix("_mod")
-            files_to_remove = []
+            files_to_remove: list[Path] = []
             for file in Constants.SONGDIR.iterdir():
-                if stem in file.stem:
+                if req.query in file.stem:
                     files_to_remove.append(file)
 
             for file in files_to_remove:
-                embed = discord.Embed(description=f"Removed {file} from the database", color=COLOR)
+                embed = discord.Embed(description=f"Removed {file} from the database", color=Constants.COLOR)
                 await ctx.send(embed=embed)
                 file.unlink()
 
@@ -145,16 +117,16 @@ async def llm_code(ctx: commands.Context, *args: str):
             stream=True,
         )
         outputs = ""
-        async for chunk in response:
+        async for chunk in response:  # type: ignore
             outputs += str(chunk["choices"][0]["delta"]["content"])
             if len(outputs) > 1 and "\n" in outputs:
                 outputs = "".join(outputs)
                 outputs.replace("\n", "")
-                embed = discord.Embed(title="Code", description=outputs, color=COLOR)
+                embed = discord.Embed(title="Code", description=outputs, color=Constants.COLOR)
                 await ctx.send(embed=embed)
                 outputs = ""
         if len(outputs) > 0:
-            embed = discord.Embed(title="Code", description=outputs, color=COLOR)
+            embed = discord.Embed(title="Code", description=outputs, color=Constants.COLOR)
             await ctx.send(embed=embed)
     except Exception as e:
         await send_error(ctx, e)
@@ -173,16 +145,16 @@ async def llm_chat(ctx: commands.Context, *args: str):
             stream=True,
         )
         outputs = ""
-        async for chunk in response:
+        async for chunk in response:  # type: ignore
             outputs += str(chunk["choices"][0]["delta"]["content"])
             if len(outputs) > 1 and "\n" in outputs:
                 outputs = "".join(outputs)
                 outputs.replace("\n", "")
-                embed = discord.Embed(title="Chat", description=outputs, color=COLOR)
+                embed = discord.Embed(title="Chat", description=outputs, color=Constants.COLOR)
                 await ctx.send(embed=embed)
                 outputs = ""
         if len(outputs) > 0:
-            embed = discord.Embed(title="Chat", description=outputs, color=COLOR)
+            embed = discord.Embed(title="Chat", description=outputs, color=Constants.COLOR)
             await ctx.send(embed=embed)
     except Exception as e:
         await send_error(ctx, e)
@@ -192,7 +164,7 @@ async def llm_chat(ctx: commands.Context, *args: str):
 @BOT.command(name="roop", brief="Prompt with stable-diffusion-xl-base-1.0")
 async def roop(ctx: commands.Context, *args: str):
     headers = {
-        "Authorization": f"Bearer {CF_API_TOKEN}",
+        "Authorization": f"Bearer {Constants.CF_API_TOKEN}",
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
@@ -202,7 +174,7 @@ async def roop(ctx: commands.Context, *args: str):
 
     response = await asyncio.to_thread(
         requests.post,
-        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0",
+        f"https://api.cloudflare.com/client/v4/accounts/{Constants.CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0",
         headers=headers,
         data=data,
     )
@@ -273,7 +245,7 @@ async def update(ctx: commands.Context, *args):
     await ctx.send("Updating...")
     command = ["git", "pull"]
     output = sp.check_output(command, stderr=sp.STDOUT)
-    embed = discord.Embed(description=output.decode("utf-8"), color=COLOR)
+    embed = discord.Embed(description=output.decode("utf-8"), color=Constants.COLOR)
     await ctx.send(embed=embed)
 
 
@@ -341,13 +313,13 @@ async def send_error(ctx: commands.Context, err: Exception):
 
 
 def main():
-    if TOKEN is None:
+    if Constants.BOT_TOKEN is None:
         return (
             "no token provided. Please create a .env file containing the token.\n"
             "for more information view the README.md"
         )
     try:
-        BOT.run(TOKEN)
+        BOT.run(Constants.BOT_TOKEN)
     except discord.PrivilegedIntentsRequired as error:
         return error
 
@@ -356,7 +328,7 @@ if __name__ == "__main__":
     try:
         main()
     except SystemError as error:
-        if PRINT_STACK_TRACE:
+        if Constants.PRINT_STACK_TRACE:
             raise
         else:
             print(error)
