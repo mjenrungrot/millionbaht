@@ -114,6 +114,8 @@ def _transform_title(
     message = message.replace("official m/v", "")
     message = message.replace("official audio", "")
     message = message.replace("music video", "")
+    message = message.replace("[", "").replace("]", "")
+    message = message.replace("(", "").replace(")", "")
 
     ttss = []
     for lang, word in _split_lang(message):
