@@ -63,7 +63,7 @@ _DUMMY_PROC_REQUEST = ProcRequest(query="")
 _DUMMY_PROC_RESPONSE = ProcResponse(success=True, path=Path())
 
 
-_LANGS = ["en", "th", "ko", "zh", "ja"]
+_LANGS = ["en", "th", "ko", "ja"]
 _CHARSETS = [
     set(icu.LocaleData(lang).getExemplarSet(icu.USET_ADD_CASE_MAPPINGS, icu.ULocaleDataExemplarSetType.ES_STANDARD))  # type: ignore
     for lang in _LANGS
