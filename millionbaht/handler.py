@@ -117,6 +117,8 @@ def _transform_title(
     message = message.replace("[", "").replace("]", "")
     message = message.replace("(", "").replace(")", "")
     message = message.replace("【", "").replace("】", "")
+    message = message.replace("（", "").replace("）", "")
+    message = message.replace("「", "").replace("」", "")
     message = message.replace("|", "")
 
     ttss = []
