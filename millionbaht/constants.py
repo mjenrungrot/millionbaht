@@ -88,6 +88,11 @@ for statements, outdir in [
 
 
 def gen_soundeffects_constants() -> None:
+    # cleanup
+    for file in Constants.SOUNDEFFECTS_OUTDIR.glob("tts_*.wav"):
+        file.unlink()
+
+    # gen sound effects
     for statement in Constants.SOUNDEFFECTS_STATEMENTS:
         text = statement["text"]
         voice = statement["voice"]
