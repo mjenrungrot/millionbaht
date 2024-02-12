@@ -88,20 +88,24 @@ for statements, outdir in [
 
 
 def gen_soundeffects_constants() -> None:
-    # cleanup
-    for file in Constants.SOUNDEFFECTS_OUTDIR.glob("tts_*.wav"):
-        file.unlink()
-
     # gen sound effects
+    good_files = set()
     for statement in Constants.SOUNDEFFECTS_STATEMENTS:
         text = statement["text"]
         voice = statement["voice"]
         hash_statement = hash(text + voice)
-        file = Constants.SOUNDEFFECTS_OUTDIR / f"tts_{hash_statement}.wav"
+        filename = f"tts_{hash_statement}.mp3"
+        file = Constants.SOUNDEFFECTS_OUTDIR / filename
+        good_files.add(filename)
         if not file.exists():
             audio_bytes = tiktok_tts(text, voice)
             assert audio_bytes is not None
             save_audio_file(audio_bytes, str(file))
+
+    # cleanup
+    for file in Constants.SOUNDEFFECTS_OUTDIR.glob("*"):
+        if file.name not in good_files:
+            file.unlink()
 
 
 gen_soundeffects_constants()
