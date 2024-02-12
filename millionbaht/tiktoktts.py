@@ -6,7 +6,7 @@ import threading, requests, base64
 LANGUAGE_VOICES_MAPPING = {
     "en": ["en_us_001", "en_us_002"],
     "ja": ["jp_001", "jp_003", "jp_005"],
-    "kr": ["kr_003"],
+    "ko": ["kr_003"],
 }
 
 
