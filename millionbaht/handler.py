@@ -23,6 +23,7 @@ import icu
 
 from millionbaht.constants import Constants
 from millionbaht.typedef import MessageableChannel, YoutubeEntry
+from millionbaht.tiktoktts import tiktok_tts, LANGUAGE_VOICES_MAPPING
 
 
 logging.basicConfig(format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO)
@@ -98,6 +99,7 @@ def _transform_title(
     max_duration: float = 10.0,
     force_tts: bool = False,
     message_prefix: str = "เพลง ",
+    backend_model: Literal["auto", "gtts", "tiktok"] = "auto",
 ) -> tuple[torch.Tensor, int]:
     # if query is hard to understand, use title instead
     logger.info(f"_transform_title Input: {audio.shape}")
@@ -108,7 +110,7 @@ def _transform_title(
     # preprocess message
     message = f"{message_prefix}{title}"
     message = message.lower()
-    message = re.sub("([\(\[]).*?([\)\]])", "\g<1>\g<2>", message)
+    message = re.sub(r"([\(\[]).*?([\)\]])", r"\g<1>\g<2>", message)
     message = message.replace("official music video", "")
     message = message.replace("official mv", "")
     message = message.replace("official m/v", "")
@@ -117,14 +119,34 @@ def _transform_title(
     message = message.replace("[", "").replace("]", "")
     message = message.replace("(", "").replace(")", "")
     message = message.replace("【", "").replace("】", "")
-    message = message.replace("（", "").replace("）", "")
+    message = message.replace(r"（", "").replace(r"）", "")
     message = message.replace("「", "").replace("」", "")
     message = message.replace("|", "")
 
     ttss = []
     for lang, word in _split_lang(message):
         audio_fd = BytesIO()
-        gTTS(word, lang=lang).write_to_fp(audio_fd)
+
+        if backend_model == "gtts":
+            gTTS(word, lang=lang).write_to_fp(audio_fd)
+        elif backend_model == "tiktok":
+            voice = random.choice(LANGUAGE_VOICES_MAPPING[lang])
+            audio_bytes = tiktok_tts(word, voice=voice)
+            if audio_bytes is None:
+                raise ValueError(f"tiktok_tts failed: {word=}, {lang=}")
+            audio_fd.write(audio_bytes)
+        elif backend_model == "auto":
+            if lang in ["en", "ko", "ja"]:
+                voice = random.choice(LANGUAGE_VOICES_MAPPING[lang])
+                audio_bytes = tiktok_tts(word, voice=voice)
+                if audio_bytes is None:
+                    raise ValueError(f"tiktok_tts failed: {word=}, {lang=}")
+                audio_fd.write(audio_bytes)
+            else:
+                gTTS(word, lang=lang).write_to_fp(audio_fd)
+        else:
+            raise ValueError(f"unknown backend_model: {backend_model}")
+
         audio_fd.seek(0)
         audio_tts, tts_rate = torchaudio.load(audio_fd, format="mp3")  # type: ignore
         audio_fd.close()
