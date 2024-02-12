@@ -2,6 +2,8 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from gtts import gTTS
+from numpy import save
+from millionbaht.tiktoktts import tiktok_tts, save_audio_file
 
 
 PROJECT_PATH = Path(__file__).parent.parent
@@ -33,10 +35,20 @@ class Constants:
     ]
     EMPTY_OUTDIR = PROJECT_PATH / "dl" / "empty"
 
+    SOUNDEFFECTS_PROBABILITY = 1.0
+    SOUNDEFFECTS_STATEMENTS = [
+        {
+            "text": "wow",
+            "voice": "en_female_f08_warmy_breeze",
+        }
+    ]
+    SOUNDEFFECTS_OUTDIR = PROJECT_PATH / "dl" / "soundeffects"
+
     ALL_STATEMENTS = [
         (OPENING_STATEMENTS, OPENNING_OUTDIR),
         (ENDING_STATEMENTS, ENDING_OUTDIR),
         (EMPTY_STATEMENTS, EMPTY_OUTDIR),
+        (SOUNDEFFECTS_STATEMENTS, SOUNDEFFECTS_OUTDIR),
     ]
 
     SONGDIR = PROJECT_PATH / "dl" / "songs"
@@ -65,7 +77,26 @@ def gen_tts_constants(statements: list[str], outdir: Path) -> None:
 
 
 Constants.SONGDIR.mkdir(parents=True, exist_ok=True)
+Constants.SOUNDEFFECTS_OUTDIR.mkdir(parents=True, exist_ok=True)
 
-
-for statements, outdir in Constants.ALL_STATEMENTS:
+for statements, outdir in [
+    (Constants.OPENING_STATEMENTS, Constants.OPENNING_OUTDIR),
+    (Constants.ENDING_STATEMENTS, Constants.ENDING_OUTDIR),
+    (Constants.EMPTY_STATEMENTS, Constants.EMPTY_OUTDIR),
+]:
     gen_tts_constants(statements, outdir)
+
+
+def gen_soundeffects_constants() -> None:
+    for statement in Constants.SOUNDEFFECTS_STATEMENTS:
+        text = statement["text"]
+        voice = statement["voice"]
+        hash_statement = hash(text + voice)
+        file = Constants.SOUNDEFFECTS_OUTDIR / f"tts_{hash_statement}.wav"
+        if not file.exists():
+            audio_bytes = tiktok_tts(text, voice)
+            assert audio_bytes is not None
+            save_audio_file(audio_bytes, str(file))
+
+
+gen_soundeffects_constants()

@@ -1,30 +1,31 @@
 import logging
+import math
 import os
 import random
+import re
+import time
+import traceback
+import unicodedata
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
-import re
-from typing import Optional, Literal, cast
-import traceback
 from io import BytesIO
-import unicodedata
+from pathlib import Path
+from typing import Literal, Optional, cast
+
 import discord
+import icu
 import torch
+import torchaudio
 import yt_dlp
 from discord import FFmpegOpusAudio, VoiceClient
 from discord.ext import commands
-from pydantic import BaseModel, ConfigDict
-import torchaudio
 from gtts import gTTS
-import math
-import icu
+from pydantic import BaseModel, ConfigDict
 
 from millionbaht.constants import Constants
+from millionbaht.tiktoktts import LANGUAGE_VOICES_MAPPING, tiktok_tts
 from millionbaht.typedef import MessageableChannel, YoutubeEntry
-from millionbaht.tiktoktts import tiktok_tts, LANGUAGE_VOICES_MAPPING
-
 
 logging.basicConfig(format="[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -498,6 +499,16 @@ class SongQueue:
                     assert to_play.channel is not None
                     self.loop.create_task(to_play.channel.send(f"Error: ```{response.message}```"))
             elif self.last_played.state == State.Done:
+                random.seed(time.time())
+                prob = random.random()
+                # Play random sound effects
+                if prob < Constants.SOUNDEFFECTS_PROBABILITY:
+                    try:
+                        sound_effect = random.choice(list(Constants.SOUNDEFFECTS_OUTDIR.iterdir()))
+                        voice_client.play(FFmpegOpusAudio(str(sound_effect)))
+                    except:
+                        logger.info("No sound effect found")
+
                 if not self.queue_empty_played:
                     if self.is_auto:
                         assert self.current_context is not None
