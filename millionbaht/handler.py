@@ -499,44 +499,50 @@ class SongQueue:
                     assert to_play.channel is not None
                     self.loop.create_task(to_play.channel.send(f"Error: ```{response.message}```"))
             elif self.last_played.state == State.Done:
+
+                def after(exception):
+                    del exception
+                    if not self.queue_empty_played:
+                        if self.is_auto:
+                            assert self.current_context is not None
+                            try:
+                                random_song_path = random.choice(
+                                    list(filter(lambda x: x.stem.endswith(".mod"), Constants.SONGDIR.iterdir()))
+                                )
+                                sid, *kws = random_song_path.stem.split(".")[0].split("--")
+                                kwdict = {}
+                                for kw in kws:
+                                    k, v = kw.split(":")
+                                    kwdict[k] = v
+                                info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{sid}.json").read_text())
+                                req = ProcRequest(query=info.id, title=info.title, **kwdict)
+                                channel = self.current_context.channel
+                                logger.info(f"Before {self.get_queue()=}")
+                                self.put(req, channel)
+                                logger.info(f"After {self.get_queue()=}")
+                            except Exception as e:
+                                logger.info(f"{list(Constants.SONGDIR.iterdir())=}")
+                                logger.info("No song found")
+                        else:
+                            empty_audio = random.choice(list(Constants.EMPTY_OUTDIR.iterdir()))
+                            voice_client.play(
+                                FFmpegOpusAudio(str(empty_audio)),
+                                after=lambda x: self.validate(),
+                            )
+                            self.queue_empty_played = True
+
                 random.seed(time.time())
                 prob = random.random()
                 # Play random sound effects
                 if prob < Constants.SOUNDEFFECTS_PROBABILITY:
                     try:
                         sound_effect = random.choice(list(Constants.SOUNDEFFECTS_OUTDIR.iterdir()))
-                        voice_client.play(FFmpegOpusAudio(str(sound_effect)))
+                        try:
+                            voice_client.play(FFmpegOpusAudio(str(sound_effect)), after=after)
+                        except:
+                            pass
                     except:
                         logger.info("No sound effect found")
-
-                if not self.queue_empty_played:
-                    if self.is_auto:
-                        assert self.current_context is not None
-                        try:
-                            random_song_path = random.choice(
-                                list(filter(lambda x: x.stem.endswith(".mod"), Constants.SONGDIR.iterdir()))
-                            )
-                            sid, *kws = random_song_path.stem.split(".")[0].split("--")
-                            kwdict = {}
-                            for kw in kws:
-                                k, v = kw.split(":")
-                                kwdict[k] = v
-                            info = YoutubeEntry.model_validate_json((Constants.SONGDIR / f"{sid}.json").read_text())
-                            req = ProcRequest(query=info.id, title=info.title, **kwdict)
-                            channel = self.current_context.channel
-                            logger.info(f"Before {self.get_queue()=}")
-                            self.put(req, channel)
-                            logger.info(f"After {self.get_queue()=}")
-                        except Exception as e:
-                            logger.info(f"{list(Constants.SONGDIR.iterdir())=}")
-                            logger.info("No song found")
-                    else:
-                        empty_audio = random.choice(list(Constants.EMPTY_OUTDIR.iterdir()))
-                        voice_client.play(
-                            FFmpegOpusAudio(str(empty_audio)),
-                            after=lambda x: self.validate(),
-                        )
-                        self.queue_empty_played = True
 
 
 def get_ydl() -> yt_dlp.YoutubeDL:
