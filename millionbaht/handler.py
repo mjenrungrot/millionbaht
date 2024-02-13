@@ -128,30 +128,29 @@ def _transform_title(
     for lang, word in _split_lang(message):
         audio_fd = BytesIO()
 
-        if backend_model == "gtts":
+        backend = backend_model
+        if backend == "auto":
+            if lang in ["en", "ko", "ja"]:
+                backend = "tiktok"
+            else:
+                backend = "gtts"
+
+        if backend == "gtts":
             gTTS(word, lang=lang).write_to_fp(audio_fd)
-        elif backend_model == "tiktok":
+        elif backend == "tiktok":
             voice = random.choice(LANGUAGE_VOICES_MAPPING[lang])
             audio_bytes = tiktok_tts(word, voice=voice)
             if audio_bytes is None:
                 raise ValueError(f"tiktok_tts failed: {word=}, {lang=}")
             audio_fd.write(audio_bytes)
-        elif backend_model == "auto":
-            if lang in ["en", "ko", "ja"]:
-                voice = random.choice(LANGUAGE_VOICES_MAPPING[lang])
-                audio_bytes = tiktok_tts(word, voice=voice)
-                if audio_bytes is None:
-                    raise ValueError(f"tiktok_tts failed: {word=}, {lang=}")
-                audio_fd.write(audio_bytes)
-            else:
-                gTTS(word, lang=lang).write_to_fp(audio_fd)
         else:
-            raise ValueError(f"unknown backend_model: {backend_model}")
+            raise ValueError(f"unknown backend_model: {backend}")
 
         audio_fd.seek(0)
         audio_tts, tts_rate = torchaudio.load(audio_fd, format="mp3")  # type: ignore
         audio_fd.close()
         audio_tts = torchaudio.functional.resample(audio_tts, tts_rate, orig_freq)
+        audio_tts, _ = _transform_volume(audio_tts, orig_freq)
         ttss.append(audio_tts)
     audio_tts = torch.cat(ttss, dim=-1)
 
