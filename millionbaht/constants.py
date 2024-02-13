@@ -37,11 +37,41 @@ class Constants:
 
     SOUNDEFFECTS_PROBABILITY = 1.0
     SOUNDEFFECTS_STATEMENTS = [
+        {"text": "Welcome, everyone, to an unforgettable night of beats and rhythms!", "voice": "en_us_001"},
+        {"text": "Let's kick things off with some vibes that'll get your heart racing!", "voice": "en_us_002"},
         {
-            "text": "wow",
-            "voice": "en_female_f08_warmy_breeze",
-        }
+            "text": "Get ready to be swept away by the next track, a tune that will take you on a journey!",
+            "voice": "en_us_006",
+        },
+        {"text": "Here's a fresh beat hot off the press, guaranteed to make you move!", "voice": "en_us_007"},
+        {"text": "I want to see everyone moving! Let the rhythm take control!", "voice": "en_us_009"},
+        {"text": "Are you ready to turn it up? Let's make this a night to remember!", "voice": "en_us_010"},
+        {"text": "Hold tight, we're about to dive into the deep end of bass!", "voice": "en_us_001"},
+        {"text": "Feel the build-up? Get ready for the drop that will shake the ground!", "voice": "en_us_002"},
+        {"text": "This track is on fire! Let's see those dance moves!", "voice": "en_us_006"},
+        {"text": "Keep the energy up! This beat is not slowing down!", "voice": "en_us_007"},
+        {"text": "Let's take a moment to vibe with a smoother, chill track.", "voice": "en_us_009"},
+        {"text": "Time to catch your breath with a tune that'll touch your soul.", "voice": "en_us_010"},
+        {"text": "I want to hear you! Let your voices be part of this track!", "voice": "en_us_001"},
+        {
+            "text": "Put your hands up and wave them to the beat! You are the energy of this night!",
+            "voice": "en_us_002",
+        },
+        {
+            "text": "Thank you for being an amazing crowd tonight. Let's close with a track that'll leave us on a high note!",
+            "voice": "en_us_006",
+        },
+        {
+            "text": "As we come to the end, remember, the music never really stops. Keep the vibe alive!",
+            "voice": "en_us_007",
+        },
+        {"text": "Dedicated to all the lovers in the house tonight, this tune is for you.", "voice": "en_us_009"},
+        {
+            "text": "Celebrating life and music - this next beat is for everyone making memories tonight!",
+            "voice": "en_us_010",
+        },
     ]
+
     SOUNDEFFECTS_OUTDIR = PROJECT_PATH / "dl" / "soundeffects"
 
     ALL_STATEMENTS = [
