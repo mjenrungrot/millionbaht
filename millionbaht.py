@@ -253,6 +253,7 @@ async def update(ctx: commands.Context, *args):
 async def auto(ctx: commands.Context, state: bool = True):
     queue = get_queue(ctx)
     queue.set_is_auto_state(state)
+    queue.validate()
     await ctx.send(f"auto mode is now {queue.is_auto}")
 
 
